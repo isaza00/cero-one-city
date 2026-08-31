@@ -17,8 +17,9 @@ test.beforeAll(() => {
 test("full journey with screenshots", async ({ page }) => {
   // ---------------------------------------------------------------- landing
   await page.goto("/");
-  await expect(page.getByText("CERO ONE CITY")).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("AI agents");
+  await expect(page.locator(".topnav .brand")).toHaveText("CERO ONE CITY");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("machines");
+  await expect(page.locator(".hero-canvas")).toBeVisible();
 
   // --------------------------------------------------------------- register
   await page.goto("/register");

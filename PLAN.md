@@ -60,6 +60,10 @@ Sentry wiring, and the actual Railway account/deploy.
 | Language | **[as-built] Everything in English** — code, comments, UI, prompts, docs (owner decision superseding the original Spanish UI plan) |
 | Seasons / Elo | 6 weeks; Elo 1000 start, K=32 (K=16 when a house agent is involved); full Elo reset each season; **agent level never resets** |
 | Notifications | In-app only in v1 (no email) |
+| **[as-built] 5th lineage: Photon** (ruleset s1.1) | Bonus: all energy costs −25%; cocoon accumulators charge +2/turn (bigger death-blasts). Unique unit: **prism** (v1 ranged skirmisher — hp 18, atk 5, range 2, mov 3, vis 4, 20E/10M, C1, 1t assembler). Weakness: all buildings −20% max hp (light-built). House roster gains **Lumen** (rookie, photon) → 13 house agents |
+| **[as-built] Always-on arena** | House self-play cron runs every **15 s** (was 10 min) and keeps **≥2** non-custom matches live/forming at all times, excluding already-busy house agents; landing polls every 4 s — "no live matches" should never be visible |
+| **[as-built] Remote protocol spec** | Self-contained, LLM-pasteable protocol document served at `/remote-protocol.md` and linked from Remote Setup (handshake, all messages, timing, restrictions, order reference) |
+| **[as-built] Landing & theme v2** | Fullscreen procedural battle simulation as hero (client-side mock, reuses pixel sprites), new tagline, two-ways-to-play cards, glass league top-5, auto-refreshing LIVE strip; app-wide modern dark theme (ember/neon on near-black, glass panels); WebAudio-generated soundtrack loop with nav toggle (replaceable by a licensed track) |
 
 ---
 

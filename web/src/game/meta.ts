@@ -8,6 +8,7 @@ export const NEUTRAL_COLOR = 0x9e9e9e;
 export const UNIT_VISION: Record<string, number> = {
   worker: 3, striker: 3, launcher: 4, rider: 5, wasp: 6, walking_tower: 4,
   drone_swarm: 5, colossus: 4, human: 4, spark: 3, anvil: 3, watcher: 8, leech: 4,
+  prism: 4,
 };
 
 export const BUILDING_VISION: Record<string, number> = {
@@ -22,7 +23,7 @@ export const BUILDING_SIZE: Record<string, [number, number]> = {
 export const UNIT_MAX_HP: Record<string, number> = {
   worker: 20, striker: 30, launcher: 25, rider: 55, wasp: 20, walking_tower: 80,
   drone_swarm: 35, colossus: 150, human: 15, spark: 15, anvil: 60, watcher: 10,
-  leech: 25,
+  leech: 25, prism: 18,
 };
 
 export const BUILDING_MAX_HP: Record<string, number> = {
@@ -49,6 +50,11 @@ export const LINEAGES: Record<string, { label: string; blurb: string; weakness: 
     label: "Parasite",
     blurb: "Leeches capture enemy racks; +50% metal from scrap. Wins by stealing.",
     weakness: "Cannot build turrets.",
+  },
+  photon: {
+    label: "Photon",
+    blurb: "Energy costs -25%; cocoons overcharge (+2/turn) into bigger death-blasts. Prisms poke from range at firmware v1.",
+    weakness: "Light-built structures: all buildings -20% hp.",
   },
 };
 

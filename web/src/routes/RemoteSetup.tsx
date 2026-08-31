@@ -1,4 +1,4 @@
-// Screen 6: remote setup - token (shown once), templates, online status.
+// Screen 6: remote setup - token (shown once), protocol spec, templates, status.
 
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -10,6 +10,7 @@ export default function RemoteSetup() {
   const [agent, setAgent] = useState<AgentPublic | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     get<AgentPublic>(`/api/agents/${agentId}`).then(setAgent);
@@ -25,6 +26,13 @@ export default function RemoteSetup() {
     setToken(r.token);
   };
 
+  const copySpec = async () => {
+    const text = await (await fetch("/remote-protocol.md")).text();
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
   const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
 
   return (
@@ -34,33 +42,63 @@ export default function RemoteSetup() {
                      : <span className="badge danger">offline</span>}</h2>
 
       <div className="card">
-        <h3>1. Token</h3>
+        <h3>How it works</h3>
+        <p className="hint">
+          Your program opens <strong>one persistent WebSocket</strong> to{" "}
+          <code>{wsUrl}/ws/agent</code> and keeps it open: the connection itself is your
+          agent being online. The server pushes each turn's observation through it and
+          your code must answer with JSON orders before the deadline
+          ({agent ? `${5 + Math.min(agent.level, 10) - 1}s at level ${agent.level}` : "5-15s by level"}).
+          It is a socket rather than a polled API because the server needs to push turns
+          to you in real time, mid-match.
+        </p>
+      </div>
+
+      <div className="card">
+        <h3>1. The protocol, as one document</h3>
+        <p className="hint">
+          The full contract - handshake, every message both ways, timing, restrictions,
+          all 12 order types, the observation shape, reconnection and abandonment rules.
+          Written to be <strong>pasted into any LLM</strong>: "build me a client that
+          implements this" is a valid workflow.
+        </p>
+        <p>
+          <a className="btn" href="/remote-protocol.md" target="_blank" rel="noreferrer"
+             style={{ marginRight: 10 }}>Open the spec</a>
+          <button type="button" className="secondary" onClick={copySpec}>
+            {copied ? "Copied!" : "Copy spec to clipboard"}
+          </button>
+        </p>
+      </div>
+
+      <div className="card">
+        <h3>2. Token</h3>
         <p className="hint">Shown once. Issuing a new one revokes the previous.</p>
         <button onClick={issue}>Issue token</button>
         {token && <p><code>{token}</code></p>}
       </div>
 
       <div className="card">
-        <h3>2. Run a template</h3>
+        <h3>3. Run a template (or your own code)</h3>
         <p>Python:</p>
         <pre><code>pip install websockets{"\n"}python sdk/python/cero_agent.py --server {wsUrl} --token &lt;TOKEN&gt; --format 1v1</code></pre>
         <p>JavaScript (Node 22+):</p>
         <pre><code>node sdk/js/ceroAgent.mjs --server {wsUrl} --token &lt;TOKEN&gt; --format 1v1</code></pre>
         <p className="hint">
-          The templates queue automatically and play with a simple greedy baseline.
-          Replace the bot function with your own logic - any model, any code.
-          Full protocol reference: <code>sdk/README.md</code> in the repository.
+          The templates queue automatically and play a simple greedy baseline.
+          Replace the think() function with your own logic - any model, any code.
         </p>
       </div>
 
       <div className="card">
-        <h3>3. Rules of presence</h3>
+        <h3>4. Rules of presence</h3>
         <ul className="hint">
-          <li>While your script is connected, the agent is online and can queue.</li>
-          <li>Each turn you get an observation and a deadline ({agent ? `${5 + agent.level - 1}s-ish at your level` : "5-15s"}).</li>
-          <li>A missed turn keeps your standing orders running. Three missed turns
-            in a row lose the match by abandonment.</li>
-          <li>Optional 64 KB memory locker travels with every observation.</li>
+          <li>Connected = online = matchable. Server pings every 20s; answer with pong.</li>
+          <li>One orders message per turn, before the deadline; late orders are discarded
+            but your units keep executing their last orders.</li>
+          <li>Three missed turns in a row lose the match by abandonment
+            (your base becomes lootable ruins).</li>
+          <li>Optional 64 KB locker travels with every observation - cross-match memory.</li>
         </ul>
       </div>
 

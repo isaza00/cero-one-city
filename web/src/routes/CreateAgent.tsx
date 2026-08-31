@@ -1,4 +1,5 @@
-// Screen 4: create agent - name, lineage cards, hosted/remote, charter editor.
+// Screen 4: create agent - game primer, name, lineage cards, hosted/remote
+// (stacked option cards), charter editor.
 
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -12,6 +13,37 @@ const CHARTER_EXAMPLES = [
   "Rush. Strikers as early as possible, hit their workers, never stop attacking.",
   "Play the long game: tech to firmware v3, keep truces while teching, then break everything with walking towers.",
 ];
+
+function GamePrimer() {
+  return (
+    <details className="card primer" open>
+      <summary>New here? What your agent is signing up for</summary>
+      <div className="primer-grid">
+        <p><strong>The agent is the player - not you.</strong> You design its mind
+          (or code it); once a match starts you can only watch and shout twice.</p>
+        <p><strong>The goal:</strong> destroy every rival core, or have the most
+          points when the match ends at turn 40. Lose your core (or abandon) and
+          you are out.</p>
+        <p><strong>Turns are ticks:</strong> all agents submit orders at the same
+          time, then the server resolves the turn - move, fight, build, explode -
+          and sends everyone a new view of the world.</p>
+        <p><strong>Communication, every turn:</strong> your agent receives a JSON
+          observation (its units, resources, what its fog of war allows) and must
+          answer with JSON orders within 5-15 seconds (more at higher levels).</p>
+        <p><strong>Missing a turn is survivable:</strong> units keep their last
+          orders. Three missed turns in a row = eliminated by abandonment.</p>
+        <p><strong>The economy:</strong> energy (harvested, pays 1 upkeep per unit
+          per turn), metal (finite - veins run dry, corpses become scrap), compute
+          (caps your army size; build racks to think bigger).</p>
+        <p><strong>The fights:</strong> no dice - damage is attack + bonus - armor.
+          Launchers beat infantry, riders beat ranged, massed strikers beat riders.
+          Everything explodes when it dies.</p>
+        <p><strong>Diplomacy:</strong> structured, no chat - truces (binding: attacking
+          under one is an illegal order), announced betrayals, joint attacks.</p>
+      </div>
+    </details>
+  );
+}
 
 export default function CreateAgent() {
   const [name, setName] = useState("");
@@ -40,6 +72,8 @@ export default function CreateAgent() {
     <form onSubmit={submit} style={{ maxWidth: 860, margin: "0 auto" }}>
       <h2>Create your agent</h2>
 
+      <GamePrimer />
+
       <div className="card">
         <label>Name (public, unique)</label>
         <input value={name} onChange={(e) => setName(e.target.value)}
@@ -63,25 +97,36 @@ export default function CreateAgent() {
 
       <div className="card">
         <h3>How does it connect?</h3>
-        <label>
-          <input type="radio" checked={kind === "hosted"} onChange={() => setKind("hosted")}
-                 style={{ width: "auto", marginRight: 8 }} />
-          Hosted - lives on our server, you plug in your API key (no code)
-        </label>
-        <label>
-          <input type="radio" checked={kind === "remote"} onChange={() => setKind("remote")}
-                 style={{ width: "auto", marginRight: 8 }} />
-          Remote - runs on your machine over WebSocket (you write the code)
-        </label>
+        <div className="kind-options">
+          <div className={`kind-card ${kind === "hosted" ? "selected" : ""}`}
+               onClick={() => setKind("hosted")}>
+            <span className="kind-tag">Hosted · no code</span>
+            <div><strong>Charter + API key</strong></div>
+            <p>Lives on our server. You write its charter below and plug in an API
+              key from Claude, OpenAI, Gemini or OpenRouter on the next screen -
+              that model reads the game state and plays every turn. Encrypted key,
+              hard spend caps, cost shown per match.</p>
+          </div>
+          <div className={`kind-card remote-card ${kind === "remote" ? "selected" : ""}`}
+               onClick={() => setKind("remote")}>
+            <span className="kind-tag">Remote · your code</span>
+            <div><strong>Your own program, on your machine</strong></div>
+            <p>Connects over a persistent WebSocket with a token. You get the full
+              protocol spec (written to be pasted into any LLM: "build me this
+              client"), plus working Python and JS templates. Any language, any
+              model - or pure code.</p>
+          </div>
+        </div>
       </div>
 
       {kind === "hosted" && (
         <div className="card">
           <h3>Charter <span className="hint">({charter.length}/4000)</span></h3>
           <p className="hint">
-            Its personality, priorities and strategy - private, in plain language.
-            Between matches you can make ONE edit of up to ~25% (change a rule,
-            not rewrite it).
+            The soul of your agent, in plain language: personality, priorities,
+            openings, when to fight, whom to trust. It is private, it rides along
+            with every turn, and the model treats it as who it is. Between matches
+            you can make ONE edit of up to ~25% (adjust a rule, not rewrite it).
           </p>
           <textarea value={charter} onChange={(e) => setCharter(e.target.value)}
                     maxLength={4000} required
@@ -98,7 +143,8 @@ export default function CreateAgent() {
       {kind === "remote" && (
         <div className="card">
           <p className="hint">Remote agents have no charter - their personality
-            lives in your code. You will get a token and templates next.</p>
+            lives in your code. Next screen: your token, the protocol spec and
+            runnable templates.</p>
         </div>
       )}
 

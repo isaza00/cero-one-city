@@ -53,7 +53,13 @@ export default function MatchesList() {
             )}
           </div>
         ))}
-        {matches.length === 0 && <p className="hint">Nothing here right now.</p>}
+        {matches.length === 0 && (
+          <p className="hint">
+            {status === "live"
+              ? "Forging the next match - seconds away. This list refreshes itself."
+              : "Nothing here yet."}
+          </p>
+        )}
       </div>
     </>
   );

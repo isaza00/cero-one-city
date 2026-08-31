@@ -18,6 +18,8 @@ def unit_cost(player: Player, utype: str) -> tuple[int, int]:
         e, m = e * 75 // 100, m * 75 // 100
     if player.lineage == "forge":
         m = m * (100 - rules.FORGE_METAL_DISCOUNT_PCT) // 100
+    if player.lineage == "photon":
+        e = e * (100 - rules.PHOTON_ENERGY_DISCOUNT_PCT) // 100
     return e, m
 
 
@@ -26,6 +28,8 @@ def building_cost(player: Player, btype: str) -> tuple[int, int]:
     e, m = spec["cost_e"], spec["cost_m"]
     if player.lineage == "forge":
         m = m * (100 - rules.FORGE_METAL_DISCOUNT_PCT) // 100
+    if player.lineage == "photon":
+        e = e * (100 - rules.PHOTON_ENERGY_DISCOUNT_PCT) // 100
     return e, m
 
 
@@ -42,6 +46,8 @@ def unit_max_hp(player: Player, utype: str) -> int:
 
 def building_max_hp(player: Player | None, btype: str) -> int:
     hp = rules.BUILDINGS[btype]["hp"]
+    if player is not None and player.lineage == "photon" and btype != "camp":
+        hp = hp * (100 - rules.PHOTON_BUILDING_HP_MALUS_PCT) // 100
     if player is not None and "reinforced_core" in player.techs:
         if btype == "core":
             hp += rules.REINFORCED_CORE_HP

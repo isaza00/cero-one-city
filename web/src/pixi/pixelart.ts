@@ -155,6 +155,15 @@ const UNIT_PAINTERS: Record<string, (ctx: Ctx, t: Tint) => void> = {
     head(ctx, 4, 3, 6, 4, t);
     px(ctx, 12, 7, 2, 2, ACCENT);           // siphon
   },
+  prism: (ctx, t) => {
+    head(ctx, 4, 4, 8, 5, t);
+    px(ctx, 7, 0, 2, 4, OUT);               // crystal emitter
+    px(ctx, 7, 1, 2, 3, VISOR);
+    px(ctx, 7, 0, 2, 1, t.g);
+    px(ctx, 6, 9, 4, 3, DARK);
+    px(ctx, 11, 10, 4, 1, t.g);             // beam arm
+    legs(ctx, 8, 12, 2);
+  },
 };
 
 const BUILDING_PAINTERS: Record<string, (ctx: Ctx, t: Tint, size: number) => void> = {
@@ -218,6 +227,7 @@ const BUILDING_PAINTERS: Record<string, (ctx: Ctx, t: Tint, size: number) => voi
 };
 
 const cache = new Map<string, Texture>();
+const canvasCache = new Map<string, HTMLCanvasElement>();
 
 function toTexture(canvas: HTMLCanvasElement): Texture {
   const texture = Texture.from(canvas);
@@ -229,13 +239,38 @@ function tintOf(owner: number): Tint {
   return owner >= 0 ? TINTS[owner % TINTS.length] : NEUTRAL_TINT;
 }
 
+/** Raw sprite canvases (also used by the landing's hero battle animation). */
+export function paintUnitCanvas(type: string, owner: number): HTMLCanvasElement {
+  const key = `u:${type}:${owner}`;
+  let canvas = canvasCache.get(key);
+  if (!canvas) {
+    const [c, ctx] = canvasOf(16);
+    (UNIT_PAINTERS[type] ?? UNIT_PAINTERS.striker)(ctx, tintOf(owner));
+    canvas = c;
+    canvasCache.set(key, canvas);
+  }
+  return canvas;
+}
+
+export function paintBuildingCanvas(type: string, owner: number,
+                                    tiles: number): HTMLCanvasElement {
+  const key = `b:${type}:${owner}:${tiles}`;
+  let canvas = canvasCache.get(key);
+  if (!canvas) {
+    const size = 16 * tiles;
+    const [c, ctx] = canvasOf(size);
+    (BUILDING_PAINTERS[type] ?? BUILDING_PAINTERS.rack)(ctx, tintOf(owner), size);
+    canvas = c;
+    canvasCache.set(key, canvas);
+  }
+  return canvas;
+}
+
 export function getUnitTexture(type: string, owner: number): Texture {
   const key = `u:${type}:${owner}`;
   let tex = cache.get(key);
   if (!tex) {
-    const [canvas, ctx] = canvasOf(16);
-    (UNIT_PAINTERS[type] ?? UNIT_PAINTERS.striker)(ctx, tintOf(owner));
-    tex = toTexture(canvas);
+    tex = toTexture(paintUnitCanvas(type, owner));
     cache.set(key, tex);
   }
   return tex;
@@ -245,10 +280,7 @@ export function getBuildingTexture(type: string, owner: number, tiles: number): 
   const key = `b:${type}:${owner}:${tiles}`;
   let tex = cache.get(key);
   if (!tex) {
-    const size = 16 * tiles;
-    const [canvas, ctx] = canvasOf(size);
-    (BUILDING_PAINTERS[type] ?? BUILDING_PAINTERS.rack)(ctx, tintOf(owner), size);
-    tex = toTexture(canvas);
+    tex = toTexture(paintBuildingCanvas(type, owner, tiles));
     cache.set(key, tex);
   }
   return tex;

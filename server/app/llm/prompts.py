@@ -70,6 +70,9 @@ LINEAGE_TEXT = {
               "Weakness: all your combat units have -1 attack.",
     "parasite": "Parasite - bonus: your leeches can capture enemy racks; +50% metal "
                 "from scrap. Unique unit: leech. Weakness: you cannot build turrets.",
+    "photon": "Photon - bonus: all energy costs -25%; cocoon accumulators charge +2/turn "
+              "(bigger death-explosions). Unique unit: prism (early ranged skirmisher, "
+              "range 2 at firmware v1). Weakness: your buildings are light-built (-20% hp).",
 }
 
 

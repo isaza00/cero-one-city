@@ -30,6 +30,8 @@ ROSTER = [
      "Aggressive and reckless: attack anything that moves with whatever you have."),
     ("Rust", "rookie", 2, "parasite",
      "Steal and run: capture racks and loot scrap, avoid fair fights."),
+    ("Lumen", "rookie", 2, "photon",
+     "Poke from range: mass prisms early, kite melee, never let them touch you."),
     ("Hinge", "veteran", 5, "forge",
      "Turtle with turrets, tech to v3 and break the game open with walking towers."),
     ("Antenna", "veteran", 5, "oracle",
@@ -74,21 +76,27 @@ async def seed_house(db: AsyncSession) -> None:
 
 
 async def house_selfplay_tick(ctx) -> None:
-    """Every 10 minutes: if fewer than 3 live matches and budget remains, start one
-    house-vs-house 1v1 so there is always something to watch."""
+    """Every 15 seconds: if fewer than 2 matches are live/forming and budget
+    remains, start a house-vs-house 1v1. The arena is NEVER empty - that is the
+    whole point of having house agents."""
     from app.db.session import session_factory
     redis = ctx["redis"]
     settings = get_settings()
     async with session_factory()() as db:
         live = (await db.execute(select(func.count(Match.id)).where(
-            Match.status == "live"))).scalar_one()
-        if live >= 3:
+            Match.status.in_(("live", "forming")),
+            Match.invite_code.is_(None)))).scalar_one()  # custom lobbies do not count
+        if live >= 2:
             return
         spent = await costs.day_spend_by_purpose_micros(db, "house")
         if spent >= settings.house_daily_budget_usd * 1_000_000:
             return
+        busy = select(MatchPlayer.agent_id).join(
+            Match, Match.id == MatchPlayer.match_id).where(
+            Match.status.in_(("live", "forming")))
         agents = (await db.execute(select(Agent).where(
-            Agent.is_house.is_(True), Agent.active.is_(True))
+            Agent.is_house.is_(True), Agent.active.is_(True),
+            Agent.id.not_in(busy))
             .order_by(func.random()).limit(2))).scalars().all()
         if len(agents) < 2:
             return

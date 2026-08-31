@@ -89,7 +89,7 @@ class WorkerSettings:
     cron_jobs = [
         cron(guarded_matchmaking, second={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
              run_at_startup=True),
-        cron(house_selfplay_tick, minute={0, 10, 20, 30, 40, 50}),
+        cron(house_selfplay_tick, second={0, 15, 30, 45}, run_at_startup=True),
         cron(season_rollover, hour={4}, minute={30}),
         cron(retention, hour={5}, minute={0}),
         cron(resume_stuck_matches, minute=set(range(0, 60, 2))),

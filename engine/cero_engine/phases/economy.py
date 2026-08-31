@@ -15,6 +15,8 @@ def maintenance_phase(state: State, ctx) -> None:
             battery = player is not None and "cocoon_battery" in player.techs
             rate = rules.COCOON_ACCUM_PER_TURN_BATTERY if battery else rules.COCOON_ACCUM_PER_TURN
             cap = rules.COCOON_ACCUM_MAX_BATTERY if battery else rules.COCOON_ACCUM_MAX
+            if player is not None and player.lineage == "photon":
+                rate += rules.PHOTON_ACCUM_BONUS
             e.accumulator = min(e.accumulator + rate, cap)
 
     # Units of players eliminated on a previous turn power down into scrap now.

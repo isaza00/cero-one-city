@@ -5,7 +5,7 @@ Percentage modifiers are expressed as integer numerator/denominator math at the
 point of use (e.g. -25% => value * 75 // 100).
 """
 
-RULESET_VERSION = "s1.0"
+RULESET_VERSION = "s1.1"
 
 # ---------------------------------------------------------------- match basics
 MAX_TURNS = 40
@@ -73,7 +73,7 @@ CAMP_GUARD_LEASH = 6          # max pursuit distance from camp
 CAPTURE_COUNTER_TARGET = 3
 
 # ------------------------------------------------------------------ lineages
-LINEAGES = ("swarm", "forge", "oracle", "parasite")
+LINEAGES = ("swarm", "forge", "oracle", "parasite", "photon")
 SWARM_CHEAP_UNITS = ("striker", "spark")   # -25% cost
 SWARM_HP_MALUS = 5                          # combat units -5 hp
 FORGE_METAL_DISCOUNT_PCT = 20               # all metal costs -20%
@@ -83,6 +83,9 @@ FORGE_PROD_PENALTY_FW = ("v2", "v3")        # assembler units of these tiers: +1
 ORACLE_VISION_BONUS = 2
 ORACLE_ATTACK_MALUS = 1                     # combat units -1 attack
 PARASITE_SCRAP_BONUS_PCT = 50               # +50% metal when collecting scrap
+PHOTON_ENERGY_DISCOUNT_PCT = 25             # all energy costs -25%
+PHOTON_ACCUM_BONUS = 2                      # cocoon accumulators charge +2/turn
+PHOTON_BUILDING_HP_MALUS_PCT = 20           # light-built structures: buildings -20% hp
 
 # --------------------------------------------------------------------- units
 # bonus_vs: extra attack against these unit types.
@@ -132,6 +135,9 @@ UNITS: dict[str, dict] = {
     "leech": dict(fw="v1", hp=25, atk=5, bonus=0, bonus_vs=(), armor=0, range=1, mov=4,
                   vis=4, cost_e=20, cost_m=15, compute=1, prod_turns=1, prod_at="assembler",
                   air=False, aa=False, lineage="parasite"),
+    "prism": dict(fw="v1", hp=18, atk=5, bonus=0, bonus_vs=(), armor=0, range=2, mov=3,
+                  vis=4, cost_e=20, cost_m=10, compute=1, prod_turns=1, prod_at="assembler",
+                  air=False, aa=False, lineage="photon"),
 }
 
 COLOSSUS_FUSE_COUNT = 5
