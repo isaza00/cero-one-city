@@ -5,7 +5,7 @@ import { Application, Container, Graphics, Sprite } from "pixi.js";
 import type { EntityOut, GameState } from "../api/types";
 import { BUILDING_MAX_HP, BUILDING_SIZE, UNIT_MAX_HP } from "../game/meta";
 import { exploredTiles, visibleTiles } from "../game/vision";
-import { getBuildingTexture, getUnitTexture } from "./pixelart";
+import { getBuildingTexture, getUnitTexture } from "./spritepack";
 
 const TERRAIN_BASE: Record<string, number> = {
   plain: 0x18202e,
