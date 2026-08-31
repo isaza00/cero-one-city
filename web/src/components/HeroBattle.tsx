@@ -6,6 +6,30 @@
 import { useEffect, useRef } from "react";
 import { paintBuildingCanvas, paintUnitCanvas } from "../pixi/pixelart";
 
+// The shipped unit sprite pack (same atlases the match renderer uses). Loads
+// async; the sim falls back to procedural sprites until it is ready.
+interface Pack {
+  img: HTMLImageElement[]; // [side0, side1]
+  units: Record<string, { row: number; frames: number }>;
+  mirror: Set<string>;
+  tile: number;
+}
+let pack: Pack | null = null;
+(async () => {
+  try {
+    const m = await (await fetch("/sprites/sprites.json")).json();
+    const load = (tint: string) => new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = `/sprites/atlas_${tint}.png`;
+    });
+    const imgs = await Promise.all([load(m.tints[0]), load(m.tints[1])]);
+    pack = { img: imgs, units: m.units, mirror: new Set(m.facing_right_mirror),
+             tile: m.tile };
+  } catch { /* keep procedural sprites */ }
+})();
+
 const TILE = 16;
 const COLS = 62;
 const ROWS = 34;
@@ -311,27 +335,49 @@ export default function HeroBattle() {
       }
       const sorted = [...units].sort((a, b) => (Number(a.air) - Number(b.air)) || a.y - b.y);
       for (const u of sorted) {
-        const img = paintUnitCanvas(u.type, u.side);
         const bobY = u.air ? Math.sin(u.wob) * 3 - 6 : 0;
         if (u.air) {
           ctx.fillStyle = "rgba(0,0,0,0.35)";
           ctx.fillRect(u.x + 5, u.y + 13, 7, 2);
         }
-        const S = 22; // drawn larger than native 16px: readable from the couch
-        ctx.save();
-        if (u.dir < 0) {
-          ctx.translate(u.x + S - 3, u.y + bobY - 3);
-          ctx.scale(-1, 1);
-          ctx.drawImage(img, 0, 0, S, S);
+        const info = pack ? pack.units[u.type] : undefined;
+        if (pack && info) {
+          // Shipped pack: 32px frames, idle animation, side-facers mirrored.
+          const pt = pack.tile;
+          const big = u.type === "walking_tower" || u.type === "colossus";
+          const S = big ? 30 : 26;
+          const frame = Math.abs(Math.floor(t * 3 + u.wob)) % info.frames;
+          const dx = u.x - (S - 16) / 2;
+          const dy = u.y + bobY + 16 - S + (u.air ? -2 : 2);
+          ctx.save();
+          if (pack.mirror.has(u.type) && u.dir < 0) {
+            ctx.translate(dx + S, dy);
+            ctx.scale(-1, 1);
+            ctx.drawImage(pack.img[u.side], frame * pt, info.row * pt, pt, pt,
+                          0, 0, S, S);
+          } else {
+            ctx.drawImage(pack.img[u.side], frame * pt, info.row * pt, pt, pt,
+                          dx, dy, S, S);
+          }
+          ctx.restore();
         } else {
-          ctx.drawImage(img, u.x - 3, u.y + bobY - 3, S, S);
+          const img = paintUnitCanvas(u.type, u.side);
+          const S = 22;
+          ctx.save();
+          if (u.dir < 0) {
+            ctx.translate(u.x + S - 3, u.y + bobY - 3);
+            ctx.scale(-1, 1);
+            ctx.drawImage(img, 0, 0, S, S);
+          } else {
+            ctx.drawImage(img, u.x - 3, u.y + bobY - 3, S, S);
+          }
+          ctx.restore();
         }
-        ctx.restore();
         if (u.hp < u.max) {
           ctx.fillStyle = "#000";
-          ctx.fillRect(u.x, u.y - 6 + bobY, 16, 2);
+          ctx.fillRect(u.x, u.y - 10 + bobY, 16, 2);
           ctx.fillStyle = u.hp / u.max > 0.5 ? "#66bb6a" : "#ef5350";
-          ctx.fillRect(u.x, u.y - 6 + bobY, Math.max(1, (u.hp / u.max) * 16), 2);
+          ctx.fillRect(u.x, u.y - 10 + bobY, Math.max(1, (u.hp / u.max) * 16), 2);
         }
       }
       for (const beam of beams) {
