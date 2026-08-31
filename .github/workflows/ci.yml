@@ -1,0 +1,58 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install uv
+      - run: uv pip install --system -e "engine[dev]"
+      - run: ruff check engine
+      # Determinism gate: golden replays + double-run + fuzz run on Linux,
+      # the same environment as the WSL dev containers.
+      - run: pytest engine/tests -q
+
+  server:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: cero, POSTGRES_PASSWORD: cero, POSTGRES_DB: cero }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cero" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://cero:cero@localhost:5432/cero
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-secret-key-long-enough-for-hs256
+      MASTER_KEY: ZGV2LW1hc3Rlci1rZXktMzItYnl0ZXMtYmFzZTY0PT0=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install uv
+      - run: uv pip install --system -e "engine[dev]" -e "server[dev]"
+      - run: ruff check server
+      - run: cd server && pytest tests -q
+
+  web:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm install
+      - run: npm run build

@@ -1,0 +1,111 @@
+/* Cero One City - single dark theme. */
+
+:root {
+  --bg: #0d1117;
+  --panel: #161c26;
+  --panel2: #1c2432;
+  --border: #2a3446;
+  --text: #e6e9f0;
+  --muted: #8b96a8;
+  --accent: #4fc3f7;
+  --danger: #ef5350;
+  --ok: #66bb6a;
+  --warn: #ffb74d;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3 { font-family: "Consolas", monospace; letter-spacing: 0.5px; }
+code, .mono { font-family: "Consolas", monospace; }
+
+.topnav {
+  display: flex; align-items: center; gap: 18px;
+  padding: 10px 22px; background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+.topnav .brand { font-family: "Consolas", monospace; font-weight: 700; font-size: 17px; color: var(--text); }
+.topnav .spacer { flex: 1; }
+.topnav a { color: var(--muted); }
+.topnav a.active, .topnav a:hover { color: var(--text); text-decoration: none; }
+
+.page { max-width: 1180px; margin: 0 auto; padding: 22px; }
+.row { display: flex; gap: 18px; flex-wrap: wrap; }
+.col { flex: 1; min-width: 280px; }
+
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; margin-bottom: 16px;
+}
+.card h3 { margin-top: 0; }
+.card.subtle { background: var(--panel2); }
+
+button, .btn {
+  background: var(--accent); color: #06222e; border: none; border-radius: 7px;
+  padding: 8px 16px; font-weight: 600; cursor: pointer; font-size: 14px;
+}
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+button.danger { background: var(--danger); color: #fff; }
+
+input, select, textarea {
+  width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px; padding: 9px 11px;
+  font-size: 14px; margin: 4px 0 12px;
+}
+textarea { min-height: 130px; font-family: "Consolas", monospace; resize: vertical; }
+label { color: var(--muted); font-size: 13px; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border); font-size: 14px; }
+th { color: var(--muted); font-weight: 600; }
+tr:hover td { background: var(--panel2); }
+
+.badge {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 12px; background: var(--panel2); border: 1px solid var(--border);
+  color: var(--muted); margin-right: 5px;
+}
+.badge.p0 { color: #4fc3f7; } .badge.p1 { color: #ef5350; }
+.badge.p2 { color: #9ccc65; } .badge.p3 { color: #ffb74d; }
+.badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); }
+.badge.danger { color: var(--danger); }
+
+.error { color: var(--danger); font-size: 14px; margin: 6px 0; }
+.hint { color: var(--muted); font-size: 13px; }
+.big { font-size: 26px; font-weight: 700; }
+
+.map-host canvas { border: 1px solid var(--border); border-radius: 8px; }
+
+.feed { max-height: 420px; overflow-y: auto; font-size: 13px; }
+.feed .line { padding: 3px 0; border-bottom: 1px dashed var(--border); }
+.feed .turn { color: var(--muted); margin-right: 6px; font-family: "Consolas", monospace; }
+
+.highlight-banner {
+  background: linear-gradient(90deg, #4a148c33, transparent);
+  border-left: 3px solid #d500f9; padding: 6px 10px; margin: 4px 0;
+  font-size: 13px;
+}
+
+.lineage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.lineage-card { cursor: pointer; border: 2px solid var(--border); }
+.lineage-card.selected { border-color: var(--accent); }
+
+.podium { display: flex; gap: 14px; align-items: flex-end; margin: 18px 0; }
+.podium .slot { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; flex: 1; }
+.podium .slot.first { border-color: var(--warn); }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+
+.progress { background: var(--panel2); border-radius: 5px; height: 8px; overflow: hidden; }
+.progress > div { background: var(--accent); height: 100%; }

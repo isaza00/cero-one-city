@@ -1,0 +1,26 @@
+# Railway deployment (PLAN.md §2.4).
+#
+# Create TWO services from this repo plus the Postgres and Redis plugins:
+#   api    -> uses this file as-is (start command below)
+#   worker -> same image, override start command: arq app.worker.WorkerSettings
+#
+# Required environment variables on BOTH services:
+#   DATABASE_URL  (postgresql+asyncpg://... - note the +asyncpg driver)
+#   REDIS_URL
+#   SECRET_KEY            (long random string)
+#   MASTER_KEY            (32 random bytes, base64: openssl rand -base64 32)
+#   ENV=prod
+#   ADMIN_EMAIL / ADMIN_PASSWORD
+#   PRACTICE_API_KEY      (Anthropic key the game pays practice matches with)
+#   HOUSE_API_KEY         (key for house agents; empty -> house plays as free bots)
+#   MIN_TURN_SECONDS=2    (watchability pacing for live matches)
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.prod"
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"

@@ -1,0 +1,55 @@
+name: balance-nightly
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  balance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install uv
+      - run: uv pip install --system -e engine
+      # Full matrix: 4 lineages x 4 lineages x 3 strategies x 20 seeds (both sides).
+      # Exits non-zero if a lineage leaves the 42-58% band or a strategy tops 65%.
+      - run: python engine/tools/balance.py --seeds 20 --out balance.csv
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: balance-matrix, path: balance.csv }
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install uv
+      - run: uv pip install --system -e "engine[dev]"
+      # Extended fuzzing beyond the PR-gate seeds.
+      - run: |
+          python - <<'EOF'
+          from cero_engine.bots import BOTS
+          from cero_engine.mapgen import generate_map
+          from cero_engine.observe import observe
+          from cero_engine.phases import advance
+          for seed in range(1, 101):
+              fmt = "ffa4" if seed % 3 else "1v1"
+              n = 4 if fmt == "ffa4" else 2
+              state = generate_map(seed, fmt, ["forge","swarm","oracle","parasite"][:n])
+              bots = [BOTS["random"](i, seed) for i in range(n)]
+              while not state.finished:
+                  orders = {p.id: bots[p.id].act(observe(state, p.id, "C"))
+                            for p in state.players if p.alive}
+                  advance(state, orders)
+                  for p in state.players:
+                      assert p.energy >= 0 and p.metal >= 0, (seed, state.turn)
+                  seen = {}
+                  for e in state.entities_sorted():
+                      for t in e.footprint():
+                          assert t not in seen, (seed, state.turn, t)
+                          seen[t] = e.id
+          print("fuzz: 100 matches, invariants held")
+          EOF

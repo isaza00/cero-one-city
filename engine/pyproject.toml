@@ -1,0 +1,31 @@
+[project]
+name = "cero-engine"
+version = "0.1.0"
+description = "Motor determinista de Cero One City (Python puro, sin dependencias)"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cero_engine"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]   # EXE queda fuera: el bind mount NTFS marca todo ejecutable
+
+[tool.ruff.lint.isort]
+known-first-party = ["cero_engine"]
+
+[tool.mypy]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
