@@ -67,7 +67,10 @@ async def spectate(ws: WebSocket, match_id: uuid.UUID) -> None:
     if snapshot is None:
         await ws.close(code=4404)
         return
-    await ws.send_text(json.dumps(snapshot, separators=(",", ":")))
+    try:
+        await ws.send_text(json.dumps(snapshot, separators=(",", ":")))
+    except (WebSocketDisconnect, RuntimeError):
+        return  # client vanished during the snapshot query (e.g. React StrictMode)
 
     redis = aioredis.from_url(get_settings().redis_url)
     pubsub = redis.pubsub()

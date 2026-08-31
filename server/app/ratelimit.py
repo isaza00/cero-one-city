@@ -31,10 +31,9 @@ def _allow(key: tuple[str, str], limit: int) -> bool:
 async def rate_limit_middleware(request: Request, call_next):
     from app.settings import get_settings
     path = request.url.path
-    if path.startswith("/api"):
+    if path.startswith("/api") and get_settings().env == "prod":
         ip = request.client.host if request.client else "unknown"
-        strict_auth = get_settings().env == "prod"
-        if strict_auth and path.startswith("/api/auth/") and request.method == "POST" \
+        if path.startswith("/api/auth/") and request.method == "POST" \
                 and not path.endswith("/logout"):
             if not _allow((ip, "auth"), 5):
                 return JSONResponse(status_code=429, content={

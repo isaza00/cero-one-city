@@ -78,8 +78,41 @@ export function useSpectate(matchId: string | undefined): SpectateData {
     };
 
     connect();
+
+    // REST safety net: WS is the fast path, but if the socket stalls or the
+    // match ends while we are not listening, polling heals the page.
+    let finishedSeen = false;
+    const poll = setInterval(async () => {
+      if (finishedSeen) return;
+      try {
+        const r = await fetch(`/api/matches/${matchId}`);
+        const body = await r.json();
+        const match = body.match as MatchOut;
+        const turn = match.turn ?? 0;
+        finishedSeen = match.status === "finished";
+        const rt = await fetch(`/api/matches/${matchId}/turns/${turn}`);
+        const td = rt.ok ? await rt.json() : null;
+        setData((d) => {
+          if (turn < d.turn && !finishedSeen) return d; // WS is ahead: keep it
+          return {
+            ...d,
+            match, players: body.players ?? d.players, turn,
+            state: td?.state ?? d.state,
+            feed: td?.feed?.length
+              ? [...d.feed.filter((f: FeedLine) => (f.turn ?? -1) !== turn),
+                 ...td.feed.map((f: FeedLine) => ({ ...f, turn }))].slice(-80)
+              : d.feed,
+            finished: d.finished || match.status === "finished",
+          };
+        });
+      } catch {
+        /* backend unreachable; keep whatever we have */
+      }
+    }, 3000);
+
     return () => {
       closed = true;
+      clearInterval(poll);
       wsRef.current?.close();
     };
   }, [matchId]);

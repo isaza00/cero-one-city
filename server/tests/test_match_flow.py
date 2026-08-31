@@ -131,3 +131,9 @@ async def test_shout_limits(user_client, app):
         "agent_id": agent["id"], "text": "One too many"})
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "match_limit"
+
+    # Don't leave a zombie "live" match behind for the resume cron to chew on.
+    async with session_factory()() as db:
+        match = await db.get(Match, _uuid.UUID(match_id))
+        match.status = "cancelled"
+        await db.commit()

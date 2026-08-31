@@ -93,7 +93,12 @@ class MatchRunner:
             self.agent_ids[mp.player_index] = str(agent.id)
             self.seats[mp.player_index] = await self._build_seat(match, mp, agent)
 
-        if match.status == "forming":
+        last = (await self.db.execute(
+            select(Turn).where(Turn.match_id == self.match_id)
+            .order_by(Turn.turn_number.desc()).limit(1))).scalar_one_or_none()
+
+        if match.status == "forming" or last is None:
+            # Fresh start (also covers a "live" match that never got its turn 0).
             lineages = [self.seats[i].mp.lineage for i in sorted(self.seats)]
             state = generate_map(match.map_seed, match.format
                                  if match.format in ("1v1", "ffa3", "ffa4")
@@ -109,9 +114,6 @@ class MatchRunner:
             await self.db.commit()
             await self._publish_remote_match_start(match, state)
         else:
-            last = (await self.db.execute(
-                select(Turn).where(Turn.match_id == self.match_id)
-                .order_by(Turn.turn_number.desc()).limit(1))).scalar_one()
             state = State.from_dict(last.state)
             chain = last.chain_hash
             match.resume_pending = False

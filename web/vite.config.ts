@@ -1,13 +1,14 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// FE corre nativo en Windows (PowerShell); el backend corre en contenedores bajo WSL2.
+// FE runs natively on Windows (PowerShell); the backend runs in containers
+// under WSL2. WS proxying needs an http target + ws:true for the upgrade.
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: true },
-      "/ws": { target: "ws://localhost:8000", ws: true },
+      "/ws": { target: "http://localhost:8000", ws: true, changeOrigin: true },
     },
   },
 });

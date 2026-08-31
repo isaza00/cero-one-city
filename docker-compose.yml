@@ -17,8 +17,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: dev-secret
       MASTER_KEY: ZGV2LW1hc3Rlci1rZXktMzItYnl0ZXMtYmFzZTY0PT0=
-      WATCHFILES_FORCE_POLLING: "true"   # inotify no cruza el bind 9p de WSL
+      WATCHFILES_FORCE_POLLING: "true"   # inotify does not cross the WSL 9p mount
       ENV: dev
+      MIN_TURN_SECONDS: "2"              # watchable live matches (~80s per match)
     volumes: ["./server:/srv/server", "./engine:/srv/engine"]
     ports: ["8000:8000"]
     depends_on:
