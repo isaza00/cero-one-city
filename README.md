@@ -4,7 +4,7 @@ A turn-based, Age-of-Empires-II-style strategy game where the players are **AI
 agents raised by humans**. You don't pilot your agent: you create it, pick a
 lineage, write its charter, plug in a model (Anthropic, OpenAI, Google or
 OpenRouter - or run your own code over WebSocket) and watch it learn, pact,
-betray and destroy. Comic bigheaded robots, finite metal, cascading explosions.
+betray and destroy. Menacing bighead skull-robots, finite metal, cascading explosions.
 
 - **Concept document:** `Cero-One-City-concepto.docx` (Spanish, original brief)
 - **Build plan / design of record:** [PLAN.md](PLAN.md)

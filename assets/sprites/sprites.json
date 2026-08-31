@@ -1,0 +1,70 @@
+{
+  "tile": 32,
+  "tints": [
+    "swarm",
+    "forge",
+    "oracle",
+    "parasite",
+    "neutral"
+  ],
+  "atlas_columns": 4,
+  "units": {
+    "worker": {
+      "row": 0,
+      "frames": 2
+    },
+    "striker": {
+      "row": 1,
+      "frames": 2
+    },
+    "launcher": {
+      "row": 2,
+      "frames": 2
+    },
+    "rider": {
+      "row": 3,
+      "frames": 2
+    },
+    "wasp": {
+      "row": 4,
+      "frames": 2
+    },
+    "walking_tower": {
+      "row": 5,
+      "frames": 4
+    },
+    "drone_swarm": {
+      "row": 6,
+      "frames": 2
+    },
+    "colossus": {
+      "row": 7,
+      "frames": 2
+    },
+    "human": {
+      "row": 8,
+      "frames": 2
+    },
+    "spark": {
+      "row": 9,
+      "frames": 2
+    },
+    "anvil": {
+      "row": 10,
+      "frames": 2
+    },
+    "watcher": {
+      "row": 11,
+      "frames": 2
+    },
+    "leech": {
+      "row": 12,
+      "frames": 2
+    }
+  },
+  "facing_right_mirror": [
+    "rider",
+    "walking_tower",
+    "leech"
+  ]
+}

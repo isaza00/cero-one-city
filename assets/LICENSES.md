@@ -13,3 +13,7 @@ Rules:
 - AI-generated images are allowed **only** for concept art, backgrounds and
   loading screens — never for characters (brief requirement).
 - CC-BY items must be credited in the app's credits screen.
+
+## Unit sprite pack v4 (`assets/sprites/`)
+- 13 units × 5 tints, 2 idle frames (walking_tower: 4), 32×32, Endesga 32.
+- Generated internally (procedural pixel art, no external assets). No license restrictions.
