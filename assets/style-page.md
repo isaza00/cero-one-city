@@ -1,44 +1,65 @@
 # Style page — Cero One City (brief for the pixel artist)
 
 The single source of visual truth. Read this before drawing anything.
+(v2 direction — replaces the earlier "comic / light" brief. Reference
+implementation: `assets/sprites/` — the 13 shipped unit designs.)
 
 ## Identity
 
-- **Pitch:** a machine planet long after the machines won. Small, comic,
-  big-headed robots wage tiny brutal wars. The cruelty is funny because the
-  protagonists are ridiculous.
-- **Tone:** light, absurd, a bit deadpan. Saturday-morning-cartoon war crimes.
-- **The bigheads ARE the brand.** Head ≈ 60% of body height. Tiny limbs.
-  Expressive single eye or visor. Battered, mismatched plating.
+- **Pitch:** a machine planet long after the machines won. Big-headed
+  skull robots wage small, brutal, tile-sized wars.
+- **Tone:** menacing, battle-worn, deadpan. The machines are not cute —
+  they are death with a big head. Menace comes from the units themselves
+  AND from quantity.
+- **The skull IS the brand.** Gray steel cranium with a light dome, deep
+  black eye sockets, glowing lineage eyes, endoskeleton teeth. Head is
+  still the dominant mass (~50–60% where the design allows).
+- **Same factory, different ghost.** Every robot body is shared gunmetal
+  steel. The ONLY color comes from the software possessing it: lineage
+  glow in the eyes, chest core, energy cells, and muzzle charges.
+- **Every combat unit shows its weapon.** Rifles, blades, cannons, drills,
+  claws — armament is part of the silhouette, never implied.
 
 ## Technical rules
 
 - **Palette:** Endesga 32 (Lospec) — no colors outside it.
-- **Tile size:** 32×32 px. Units fit inside one tile (bighead may overflow 2–4
-  px upward). Buildings: 1×1 or 2×2 tiles.
-- **Animation:** idle = 2 frames. That's it for v1 (walk/attack are stretch).
-- **Lineage tint:** each unit ships in 4 tints — swarm (cyan family), forge
-  (red family), oracle (green family), parasite (amber family). Recolors of the
-  same sprite are fine.
-- **Outlines:** 1 px, darkest palette tone, no anti-aliasing.
+  - Steel ramp: `#181425` (outline) → `#262b44` → `#3a4466` → `#5a6988`
+    → `#8b9bb4` (skull) → `#c0cbdc` → `#ffffff`.
+  - Wear: `#b86f50`, `#733e39` (rust chips, grime).
+  - Human skin: `#e8b796`, `#c28569`.
+- **Lineage glows (bright, dim):** swarm `#2ce8f5/#0099db`, forge
+  `#e43b44/#a22633`, oracle `#63c74d/#3e8948`, parasite `#feae34/#d77643`,
+  neutral `#c0cbdc/#8b9bb4`.
+- **Tile size:** 32×32. Units fit one tile (may overflow 2–4 px upward).
+  Buildings: 1×1 or 2×2 tiles.
+- **Animation:** idle = 2 frames (eye pulse + one mechanical motion:
+  gait, flap, recoil, claw snap). Exception: `walking_tower` ships 4
+  frames for the drill spin.
+- **Facing:** front-facing by default. Side-facing units (`rider`,
+  `walking_tower`, `leech`) face RIGHT; the engine mirrors for left.
+- **Outlines:** 1 px, `#181425`, no anti-aliasing, no gradients.
 
-## Deliverables (see PLAN.md §10)
+## The 13 unit designs (shipped reference)
 
-1. 13 unit types × 4 tints (idle + 2 frames)
-2. 16 agent portraits (4 lineages × 4 variants)
-3. Buildings: core (intact / cracks / fire / collapse), cocoon, rack,
-   assembler, turret, human camp, generic ruins
-
-## Three reference notes
-
-- Proportions: think "funko-fied AoE2 militia".
-- Materials: worn steel, exposed wiring, kludged repairs — no chrome.
-- Humans (survivor camps): patched futuristic gear, faces hidden (hood/visor),
-  clearly outgunned and improvising.
+worker (tool arm) · striker (rifle + blade) · launcher (skinny sniper,
+telescopic lens eye, twin alternating cannons) · rider (robot war-dog:
+side quadruped body, huge front-facing fanged skull, back turret) ·
+wasp (insectoid: twin wing pairs, striped abdomen, spear stinger) ·
+walking_tower (tunnel-boring machine: lateral cone drill + two small
+counter-rotating cutters, tank treads) · drone_swarm (sentinel: eye-dome
+with 10 segmented tentacles, side claws) · colossus (armored skull,
+shoulder cannons, side cannon + giant front-facing muzzle ring) ·
+human (the one organic: soldier — helmet, visible face, tactical vest,
+lineage armband, rifle) · spark (cheap bot on wheels, shiv) · anvil
+(open-cage exo-mech, twin gatling arms) · watcher (floating eye orb,
+sensor dish, hover jets — unarmed) · leech (tracked pincer rig, single
+sensor eye, giant snapping claw — no skull).
 
 ## Do / Don't
 
 - DO make every unit readable at 100% zoom on a dark background (#0d1117).
-- DO keep silhouettes distinct per unit type (the head shape can vary).
+- DO keep silhouettes distinct per unit type; weapons are silhouette.
+- DO add wear: rust pixels, battle cracks, rivets, mismatched plates.
+- DON'T put lineage color on body plates — glows only.
+- DON'T make anything cute, rounded, or candy-colored.
 - DON'T use gradients, sub-pixel AA, or off-palette colors.
-- DON'T make anything look grimdark-serious; menace comes from quantity.
