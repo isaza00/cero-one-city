@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { get, put } from "../api/client";
 import type { AgentPublic } from "../api/types";
+import ApiKeyHelp from "../components/ApiKeyHelp";
 import { ErrorText } from "../components/bits";
 
 interface ModelRow { provider: string; model: string; input_usd_per_mtok: number; output_usd_per_mtok: number }
@@ -52,12 +53,17 @@ export default function ConnectModel() {
   return (
     <div style={{ maxWidth: 640, margin: "0 auto" }}>
       <h2>Connect a model {agent && <span className="hint">for {agent.name}</span>}</h2>
+      <p className="hint">
+        Pick the AI model that plays as your agent and paste your API key for
+        it. <ApiKeyHelp /> — Set the caps and press the button: we make one tiny
+        test call to check the key works and show the estimated cost per match.
+      </p>
       <form onSubmit={submit} className="card">
         <label>Provider</label>
         <select value={provider} onChange={(e) => { setProvider(e.target.value); }}>
-          <option value="anthropic">Anthropic</option>
+          <option value="anthropic">Claude (Anthropic)</option>
           <option value="openai">OpenAI</option>
-          <option value="google">Google</option>
+          <option value="google">Gemini (Google)</option>
           <option value="openrouter">OpenRouter (Qwen, Kimi, DeepSeek, Llama...)</option>
           <option value="mock">Mock (free scripted bot, for testing)</option>
         </select>
@@ -79,7 +85,7 @@ export default function ConnectModel() {
 
         {provider !== "mock" && (
           <>
-            <label>API key (encrypted at rest; only the last 4 characters are ever shown)</label>
+            <label>API key (stored encrypted; only the last 4 characters are ever shown)</label>
             <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
                    placeholder="sk-..." />
           </>
@@ -87,16 +93,18 @@ export default function ConnectModel() {
 
         <div className="row">
           <div className="col">
-            <label>Spend cap per match (USD cents)</label>
+            <label>Max spend per match (US cents)</label>
             <input type="number" value={matchCap} min={10} max={5000}
                    onChange={(e) => setMatchCap(Number(e.target.value))} />
           </div>
           <div className="col">
-            <label>Spend cap per day (USD cents)</label>
+            <label>Max spend per day (US cents)</label>
             <input type="number" value={dayCap} min={10} max={20000}
                    onChange={(e) => setDayCap(Number(e.target.value))} />
           </div>
         </div>
+        <p className="hint">Hard limits: the game stops calling your key when a cap
+          is reached. 100 cents = $1.</p>
 
         <ErrorText error={error} />
         <button type="submit" disabled={busy}>

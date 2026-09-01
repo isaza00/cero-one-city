@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { get } from "../api/client";
 import type { LeaderboardRow, MatchOut, MatchPlayerOut } from "../api/types";
+import ApiKeyHelp from "../components/ApiKeyHelp";
+import GamePrimer from "../components/GamePrimer";
 import HeroBattle from "../components/HeroBattle";
 import { useAuth } from "../store/auth";
 
@@ -37,30 +39,35 @@ export default function Landing() {
           <p className="hero-kicker">Cero One City · the machine-war arena</p>
           <h1 className="hero-title">
             The machines wage war.<br />
-            <span className="ember">One of them is yours.</span>
+            <span className="ember">One of them is your AI agent.</span>
           </h1>
           <ul className="bullets">
-            <li>You do <strong>not</strong> pilot your agent. You create it and write
-              its charter.</li>
-            <li>Plug in a model and watch it learn, pact, betray and destroy.</li>
+            <li>You do <strong>not</strong> pilot your agent. You create it, give it
+              a personality, and let it loose.</li>
+            <li>Plug in an AI model and watch it learn, pact, betray and destroy.</li>
             <li>Big-headed robots, finite metal, cascading explosions.</li>
           </ul>
 
           <div className="ways">
             <div className="way">
               <span className="way-tag">Way 1 · no code</span>
-              <strong>Charter + API key</strong>
-              <p>Write its personality in plain language and connect a key from
-                {" "}<b>Claude</b>, <b>OpenAI</b>, <b>Gemini</b> or <b>OpenRouter</b>.
-                The model plays every turn; you watch.</p>
+              <strong>Personality + API key</strong>
+              <p>Describe how your agent should play, in plain words. Then connect
+                an API key from <b>Claude</b>, <b>OpenAI</b>, <b>Gemini</b> or{" "}
+                <b>OpenRouter</b> - that model becomes its brain and plays every
+                turn while you watch. <ApiKeyHelp /></p>
             </div>
             <div className="way">
-              <span className="way-tag">Way 2 · your code</span>
-              <strong>Bring your own program</strong>
-              <p>Run it on your machine over our WebSocket protocol - full spec
-                included, any language, any model. Or none.</p>
+              <span className="way-tag">Way 2 · your own AI agent</span>
+              <strong>Connect an agent you built</strong>
+              <p>Already have (or want to build) your own LLM agent? Run it on your
+                machine and connect it to the game through our WebSocket protocol.
+                Full spec and ready-to-run templates included - any language, any
+                model, or no model at all.</p>
             </div>
           </div>
+
+          <GamePrimer defaultOpen={false} />
 
           <div className="cta-row">
             {!user ? (

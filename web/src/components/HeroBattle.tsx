@@ -1,34 +1,12 @@
 // Landing hero: a perpetual mock battle rendered as chunky pixels covering the
 // screen - workers mining, waves marching, turrets firing, racks cascading.
-// Pure client-side simulation (no backend), reusing the procedural sprites so
-// it looks exactly like a real match replay.
+// Pure client-side simulation (no backend), drawn 100% from the shipped sprite
+// pack (units AND buildings) so it looks exactly like a real match.
 
 import { useEffect, useRef } from "react";
-import { paintBuildingCanvas, paintUnitCanvas } from "../pixi/pixelart";
+import { domPack, drawBuilding, drawUnit, loadDomPack } from "../game/dompack";
 
-// The shipped unit sprite pack (same atlases the match renderer uses). Loads
-// async; the sim falls back to procedural sprites until it is ready.
-interface Pack {
-  img: HTMLImageElement[]; // [side0, side1]
-  units: Record<string, { row: number; frames: number }>;
-  mirror: Set<string>;
-  tile: number;
-}
-let pack: Pack | null = null;
-(async () => {
-  try {
-    const m = await (await fetch("/sprites/sprites.json")).json();
-    const load = (tint: string) => new Promise<HTMLImageElement>((res, rej) => {
-      const i = new Image();
-      i.onload = () => res(i);
-      i.onerror = rej;
-      i.src = `/sprites/atlas_${tint}.png`;
-    });
-    const imgs = await Promise.all([load(m.tints[0]), load(m.tints[1])]);
-    pack = { img: imgs, units: m.units, mirror: new Set(m.facing_right_mirror),
-             tile: m.tile };
-  } catch { /* keep procedural sprites */ }
-})();
+void loadDomPack(); // warm the atlases; frames before load simply skip sprites
 
 const TILE = 16;
 const COLS = 62;
@@ -49,7 +27,7 @@ const SPECS: Record<string, { hp: number; range: number; dps: number; speed: num
   worker: { hp: 20, range: 1, dps: 2, speed: 26 },
   striker: { hp: 30, range: 1, dps: 9, speed: 30 },
   launcher: { hp: 25, range: 3, dps: 8, speed: 28 },
-  prism: { hp: 18, range: 2, dps: 6, speed: 28 },
+  drone_swarm: { hp: 35, range: 2, dps: 6, speed: 40 },
   rider: { hp: 55, range: 1, dps: 12, speed: 46 },
   wasp: { hp: 20, range: 1, dps: 7, speed: 55, air: true },
   anvil: { hp: 60, range: 1, dps: 10, speed: 20 },
@@ -61,7 +39,7 @@ const WAVES: string[][] = [
   ["striker", "striker", "striker"],
   ["launcher", "launcher", "striker"],
   ["rider", "rider"],
-  ["prism", "prism", "striker", "striker"],
+  ["drone_swarm", "drone_swarm", "striker", "striker"],
   ["wasp", "wasp"],
   ["anvil", "striker", "launcher"],
   ["walking_tower", "striker", "striker"],
@@ -232,7 +210,7 @@ export default function HeroBattle() {
         let best = 8 * TILE;
         for (const v of units) {
           if (v.side === u.side || v.type === "worker") continue;
-          if (v.air && !(u.type === "launcher" || u.air || u.type === "prism")) continue;
+          if (v.air && !(u.type === "launcher" || u.air || u.type === "drone_swarm")) continue;
           const d = Math.hypot(v.x - u.x, v.y - u.y);
           if (d < best) { best = d; target = v; }
         }
@@ -248,7 +226,7 @@ export default function HeroBattle() {
           u.cool = 0.55;
           if (u.range > 1) {
             beams.push({ x1: u.x + 8, y1: u.y + 4, x2: goalX + 8, y2: goalY + 6,
-              life: 0.12, c: u.type === "prism" ? "#b3e5fc" : "#ffd54f" });
+              life: 0.12, c: u.type === "drone_swarm" ? "#b3e5fc" : "#ffd54f" });
           }
           if (target) {
             target.hp -= u.dps * 0.55;
@@ -325,9 +303,13 @@ export default function HeroBattle() {
         ctx.fillStyle = "#8d6e63";
         ctx.fillRect(s.x + 6, s.y + 9, 4, 2);
       }
+      const p = domPack();
+      const bframe = Math.floor(t * 1.4) % 2;
       for (const b of buildings) {
-        const img = paintBuildingCanvas(b.type, b.side, b.tiles);
-        ctx.drawImage(img, b.tx * TILE, b.ty * TILE);
+        const tint = b.side === 0 ? "swarm" : b.side === 1 ? "forge" : "neutral";
+        const bs = b.tiles * TILE + 8;
+        drawBuilding(ctx, b.type, tint, bframe,
+                     b.tx * TILE - 4, b.ty * TILE - (bs - b.tiles * TILE), bs, bs);
         if (b.type === "core" && b.hp < b.max * 0.85) {
           ctx.fillStyle = "rgba(255,120,60,0.35)";
           ctx.fillRect(b.tx * TILE + 6, b.ty * TILE + 20, 6, 4);
@@ -340,39 +322,15 @@ export default function HeroBattle() {
           ctx.fillStyle = "rgba(0,0,0,0.35)";
           ctx.fillRect(u.x + 5, u.y + 13, 7, 2);
         }
-        const info = pack ? pack.units[u.type] : undefined;
-        if (pack && info) {
-          // Shipped pack: 32px frames, idle animation, side-facers mirrored.
-          const pt = pack.tile;
-          const big = u.type === "walking_tower" || u.type === "colossus";
-          const S = big ? 30 : 26;
-          const frame = Math.abs(Math.floor(t * 3 + u.wob)) % info.frames;
-          const dx = u.x - (S - 16) / 2;
-          const dy = u.y + bobY + 16 - S + (u.air ? -2 : 2);
-          ctx.save();
-          if (pack.mirror.has(u.type) && u.dir < 0) {
-            ctx.translate(dx + S, dy);
-            ctx.scale(-1, 1);
-            ctx.drawImage(pack.img[u.side], frame * pt, info.row * pt, pt, pt,
-                          0, 0, S, S);
-          } else {
-            ctx.drawImage(pack.img[u.side], frame * pt, info.row * pt, pt, pt,
-                          dx, dy, S, S);
-          }
-          ctx.restore();
-        } else {
-          const img = paintUnitCanvas(u.type, u.side);
-          const S = 22;
-          ctx.save();
-          if (u.dir < 0) {
-            ctx.translate(u.x + S - 3, u.y + bobY - 3);
-            ctx.scale(-1, 1);
-            ctx.drawImage(img, 0, 0, S, S);
-          } else {
-            ctx.drawImage(img, u.x - 3, u.y + bobY - 3, S, S);
-          }
-          ctx.restore();
-        }
+        // Shipped pack: 32px frames, idle animation, side-facers mirrored.
+        const big = u.type === "walking_tower" || u.type === "colossus";
+        const S = big ? 30 : 26;
+        const frame = Math.abs(Math.floor(t * 3 + u.wob));
+        const dx = u.x - (S - 16) / 2;
+        const dy = u.y + bobY + 16 - S + (u.air ? -2 : 2);
+        const tint = u.side === 0 ? "swarm" : "forge";
+        drawUnit(ctx, u.type, tint, frame, dx, dy, S, S,
+                 (p?.mirror.has(u.type) ?? false) && u.dir < 0);
         if (u.hp < u.max) {
           ctx.fillStyle = "#000";
           ctx.fillRect(u.x, u.y - 10 + bobY, 16, 2);

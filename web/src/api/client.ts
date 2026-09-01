@@ -23,16 +23,40 @@ async function rawRequest(path: string, options: RequestInit): Promise<Response>
   return fetch(path, { ...options, headers });
 }
 
-async function tryRefresh(): Promise<boolean> {
-  const { refreshToken, setTokens, logout } = useAuth.getState();
+// Single-flight refresh: refresh tokens are one-use (rotated), so two parallel
+// 401s must share ONE refresh call - the loser of the race would otherwise
+// burn a stale token, fail, and log the user out for no reason.
+let refreshInFlight: Promise<boolean> | null = null;
+
+function tryRefresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = doRefresh().finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
+async function doRefresh(): Promise<boolean> {
+  const { refreshToken, setTokens } = useAuth.getState();
   if (!refreshToken) return false;
-  const r = await fetch("/api/auth/refresh", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
+  let r: Response;
+  try {
+    r = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  } catch {
+    return false; // network blip: keep the session, the next call retries
+  }
   if (!r.ok) {
-    logout();
+    if (r.status === 401 || r.status === 403) {
+      // Maybe another tab already rotated the token and ours is stale:
+      // re-read localStorage and retry once with the newer token.
+      await useAuth.persist.rehydrate();
+      const fresh = useAuth.getState().refreshToken;
+      if (fresh && fresh !== refreshToken) return doRefresh();
+      useAuth.getState().logout(); // token truly dead
+    }
     return false;
   }
   const data = await r.json();

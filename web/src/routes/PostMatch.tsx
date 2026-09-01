@@ -5,7 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { get } from "../api/client";
 import type { GameState, MatchOut, MatchPlayerOut } from "../api/types";
 import { PlayerBadge } from "../components/bits";
-import { PLAYER_COLOR_CSS } from "../game/meta";
+import ScoreChart from "../components/ScoreChart";
 import { useAuth } from "../store/auth";
 
 export default function PostMatch() {
@@ -58,18 +58,8 @@ export default function PostMatch() {
   const podium = useMemo(() =>
     (match?.summary?.placements ?? []).slice(0, 3), [match]);
 
-  const chart = useMemo(() => {
-    if (scoreSeries.length < 2) return null;
-    const w = 560, h = 180;
-    const max = Math.max(...scoreSeries.flat(), 1);
-    const paths = (scoreSeries[0] ?? []).map((_, pid) => {
-      const points = scoreSeries.map((row, i) =>
-        `${(i / (scoreSeries.length - 1)) * w},${h - (row[pid] / max) * (h - 10)}`);
-      return <polyline key={pid} points={points.join(" ")} fill="none"
-                       stroke={PLAYER_COLOR_CSS[pid % 4]} strokeWidth={2} />;
-    });
-    return <svg width={w} height={h} style={{ background: "var(--panel2)", borderRadius: 8 }}>{paths}</svg>;
-  }, [scoreSeries]);
+  const names = useMemo(() =>
+    new Map(players.map((p) => [p.player_index, p.name])), [players]);
 
   if (!match) return <p className="hint">Loading...</p>;
 
@@ -91,30 +81,32 @@ export default function PostMatch() {
         ))}
       </div>
 
-      <div className="row">
-        <div className="col card">
-          <h3>Final standings</h3>
-          <table>
-            <thead><tr><th>#</th><th>Agent</th><th>Score</th><th>ΔElo</th><th>Status</th></tr></thead>
-            <tbody>
-              {players.slice().sort((a, b) => (a.placement ?? 9) - (b.placement ?? 9))
-                .map((p) => (
-                <tr key={p.player_index}>
-                  <td>{p.placement}</td>
-                  <td><PlayerBadge index={p.player_index} name={p.name} /></td>
-                  <td className="mono">{p.score}</td>
-                  <td className="mono">{p.elo_delta !== null
-                    ? (p.elo_delta >= 0 ? `+${p.elo_delta}` : p.elo_delta) : "-"}</td>
-                  <td>{p.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="col card">
-          <h3>Score over time</h3>
-          {chart ?? <p className="hint">Chart unavailable (states pruned).</p>}
-        </div>
+      <div className="card">
+        <h3>Final standings</h3>
+        <table>
+          <thead><tr><th>#</th><th>Agent</th><th>Score</th><th>ΔElo</th><th>Status</th></tr></thead>
+          <tbody>
+            {players.slice().sort((a, b) => (a.placement ?? 9) - (b.placement ?? 9))
+              .map((p) => (
+              <tr key={p.player_index}>
+                <td>{p.placement}</td>
+                <td><PlayerBadge index={p.player_index} name={p.name} /></td>
+                <td className="mono">{p.score}</td>
+                <td className="mono">{p.elo_delta !== null
+                  ? (p.elo_delta >= 0 ? `+${p.elo_delta}` : p.elo_delta) : "-"}</td>
+                <td>{p.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Full-width card so the chart stretches with the screen. */}
+      <div className="card">
+        <h3>Score over time</h3>
+        {scoreSeries.length >= 2
+          ? <ScoreChart series={scoreSeries} names={names} />
+          : <p className="hint">Chart unavailable (states pruned).</p>}
       </div>
 
       {reports.length > 0 && (

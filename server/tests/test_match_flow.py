@@ -123,10 +123,28 @@ async def test_shout_limits(user_client, app):
         match.status = "live"
         await db.commit()
 
-    for i in range(2):
+    async def set_turn(n: int) -> None:
+        async with session_factory()() as db:
+            m = await db.get(Match, _uuid.UUID(match_id))
+            m.current_turn = n
+            await db.commit()
+
+    # First message lands; a second one on the SAME turn is rejected.
+    r = await c.post(f"/api/matches/{match_id}/shout", json={
+        "agent_id": agent["id"], "text": "Hold the truce! (0)"})
+    assert r.status_code == 200, r.text
+    r = await c.post(f"/api/matches/{match_id}/shout", json={
+        "agent_id": agent["id"], "text": "Same-turn spam"})
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "turn_limit"
+
+    # One per turn is fine, up to the per-match cap of 6.
+    for i in range(1, 6):
+        await set_turn(i)
         r = await c.post(f"/api/matches/{match_id}/shout", json={
             "agent_id": agent["id"], "text": f"Hold the truce! ({i})"})
         assert r.status_code == 200, r.text
+    await set_turn(6)
     r = await c.post(f"/api/matches/{match_id}/shout", json={
         "agent_id": agent["id"], "text": "One too many"})
     assert r.status_code == 409

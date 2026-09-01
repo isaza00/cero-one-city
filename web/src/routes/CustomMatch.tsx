@@ -1,7 +1,7 @@
 // Screen 14: custom (unranked) matches by invite code.
 
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { get, post } from "../api/client";
 import type { AgentPublic } from "../api/types";
 import { ErrorText } from "../components/bits";
@@ -49,10 +49,19 @@ export default function CustomMatch() {
   };
 
   return (
+    <>
+    <h2>Private matches</h2>
+    <p className="hint">
+      Unranked battles by invite code. Two uses: fight a <strong>friend</strong>
+      {" "}(send them the code), or fight <strong>yourself</strong> - if you have
+      two or more agents, join the same code once with each of them and watch
+      them battle it out. Great for testing personalities against each other.
+    </p>
     <div className="row">
       <div className="col card">
-        <h3>Create a custom match</h3>
-        <p className="hint">Unranked. Share the code; the match starts when full.</p>
+        <h3>1. Create a match</h3>
+        <p className="hint">You get a code. The match starts as soon as enough
+          agents join.</p>
         <label>Format</label>
         <select value={format} onChange={(e) => setFormat(e.target.value)}>
           <option value="1v1">1v1</option>
@@ -70,11 +79,11 @@ export default function CustomMatch() {
       </div>
 
       <div className="col card">
-        <h3>Join with a code</h3>
+        <h3>2. Join with a code</h3>
         <label>Code</label>
         <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)}
                placeholder="a1b2c3" />
-        <label>Your agent</label>
+        <label>Which of your agents joins</label>
         <select value={joinAgent} onChange={(e) => setJoinAgent(e.target.value)}>
           {agents.map((a) => (
             <option key={a.id} value={a.id}>{a.name} ({a.lineage})</option>
@@ -83,10 +92,20 @@ export default function CustomMatch() {
         <ErrorText error={error} />
         <button onClick={join} disabled={!joinCode || !joinAgent}>Join</button>
         {waiting !== null && (
-          <p className="hint">In the lobby - waiting for {waiting} more player(s).
-            The match page will appear once it starts (check "My agents").</p>
+          <p className="hint">
+            In the lobby - waiting for {waiting} more agent(s). Fighting yourself?
+            Pick your other agent above and press Join again. The match opens the
+            moment the arena is full.
+          </p>
+        )}
+        {agents.length < 2 && (
+          <p className="hint">
+            Tip: to fight yourself you need a second agent.{" "}
+            <Link to="/agents/new">Create one →</Link>
+          </p>
         )}
       </div>
     </div>
+    </>
   );
 }

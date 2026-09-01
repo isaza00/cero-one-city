@@ -103,6 +103,14 @@ export interface EntityOut {
   build_progress?: number;
   accumulator?: number;
   capture?: { by: number; counter: number };
+  standing_order?: { type: string; to?: number[]; target?: number[];
+                     target_id?: number } | null;
+}
+
+/** One engine event of a resolved turn (attack/unit_killed/built/...). */
+export interface GameEvent {
+  type: string;
+  [key: string]: unknown;
 }
 
 export interface PlayerOut {
@@ -128,6 +136,7 @@ export interface GameState {
   scrap: Record<string, { e: number; m: number }>;
   players: PlayerOut[];
   entities: Record<string, EntityOut>;
+  events_last_turn?: GameEvent[];
   finished: boolean;
   winner: number | null;
 }
@@ -136,6 +145,7 @@ export interface FeedLine {
   agent_id: string | null;
   player_index: number | null;
   text: string;
+  kind?: string;
   turn?: number;
 }
 

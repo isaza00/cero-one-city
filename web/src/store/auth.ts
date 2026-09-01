@@ -25,3 +25,12 @@ export const useAuth = create<AuthState>()(
     { name: "cero-auth" },
   ),
 );
+
+// Refresh tokens are one-use: when another tab rotates them, this tab's copy
+// goes stale and its next refresh would fail and log the user out. Follow the
+// other tab's writes instead.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === "cero-auth") void useAuth.persist.rehydrate();
+  });
+}

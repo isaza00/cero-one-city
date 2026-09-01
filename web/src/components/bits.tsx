@@ -1,29 +1,60 @@
 // Small shared UI pieces.
 
+import { useEffect, useRef } from "react";
 import type { FeedLine, ScoreboardRow } from "../api/types";
+import { banterFor } from "../game/banter";
 import { PLAYER_COLOR_CSS } from "../game/meta";
 
 export function PlayerBadge({ index, name }: { index: number; name?: string | null }) {
   return (
     <span className={`badge p${index % 4}`} style={{ borderColor: PLAYER_COLOR_CSS[index % 4] }}>
-      P{index}{name ? ` ${name}` : ""}
+      {name ?? `P${index}`}
     </span>
   );
 }
 
-export function Feed({ lines }: { lines: FeedLine[] }) {
+/** The war-room feed: agents "talk" (banter picked per event), the plain fact
+ *  sits underneath, and the box keeps itself scrolled to the newest line. */
+export function Commentary({ lines, names }: {
+  lines: FeedLine[];
+  names?: Map<number, string>;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
+
   return (
-    <div className="feed">
-      {lines.length === 0 && <div className="hint">Nothing yet...</div>}
-      {lines.map((l, i) => (
-        <div className="line" key={i}>
-          {l.turn !== undefined && <span className="turn">T{l.turn}</span>}
-          {l.player_index !== null && l.player_index !== undefined && (
-            <PlayerBadge index={l.player_index} />
-          )}
-          {l.text}
+    <div className="commentary" ref={boxRef}>
+      {lines.length === 0 && (
+        <div className="hint" style={{ padding: 10 }}>
+          The agents are sizing each other up...
         </div>
-      ))}
+      )}
+      {lines.map((l, i) => {
+        const pid = l.player_index;
+        const banter = banterFor(l);
+        const name = pid !== null && pid !== undefined
+          ? names?.get(pid) ?? `P${pid}` : null;
+        return (
+          <div className="chat-line" key={i}>
+            {name !== null && pid !== null && pid !== undefined && (
+              <span className="chat-name" style={{ color: PLAYER_COLOR_CSS[pid % 4] }}>
+                {name}
+              </span>
+            )}
+            {banter ? (
+              <>
+                <div className="chat-banter">{banter}</div>
+                <div className="chat-fact">T{l.turn ?? "?"} · {l.text}</div>
+              </>
+            ) : (
+              <div className="chat-fact solo">T{l.turn ?? "?"} · {l.text}</div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

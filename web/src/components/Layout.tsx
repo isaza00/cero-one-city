@@ -26,8 +26,9 @@ export default function Layout() {
         <NavLink to="/" className="brand">CERO ONE CITY</NavLink>
         <NavLink to="/matches">Live</NavLink>
         <NavLink to="/leaderboard">Ranking</NavLink>
-        {user && <NavLink to="/agents">My agents</NavLink>}
-        {user && <NavLink to="/custom">Custom</NavLink>}
+        {/* Always visible - they just bounce to /login when logged out. */}
+        <NavLink to="/agents">My agents</NavLink>
+        <NavLink to="/custom">Private match</NavLink>
         {user?.role === "admin" && <NavLink to="/admin">Admin</NavLink>}
         <span className="spacer" />
         <MusicToggle />

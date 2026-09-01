@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type {
-  FeedLine, GameState, MatchOut, MatchPlayerOut, ScoreboardRow, SpectateSnapshot,
+  FeedLine, GameEvent, GameState, MatchOut, MatchPlayerOut, ScoreboardRow,
+  SpectateSnapshot,
 } from "../api/types";
 
 export interface SpectateData {
@@ -10,6 +11,8 @@ export interface SpectateData {
   players: MatchPlayerOut[];
   turn: number;
   state: GameState | null;
+  /** Events of the latest resolved turn (attacks, kills, builds...). */
+  events: GameEvent[];
   feed: FeedLine[];
   highlights: { turn: number; kind: string; text?: string }[];
   scoreboard: ScoreboardRow[];
@@ -19,8 +22,8 @@ export interface SpectateData {
 
 export function useSpectate(matchId: string | undefined): SpectateData {
   const [data, setData] = useState<SpectateData>({
-    match: null, players: [], turn: 0, state: null, feed: [], highlights: [],
-    scoreboard: [], connected: false, finished: false,
+    match: null, players: [], turn: 0, state: null, events: [], feed: [],
+    highlights: [], scoreboard: [], connected: false, finished: false,
   });
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -54,6 +57,7 @@ export function useSpectate(matchId: string | undefined): SpectateData {
             ...d,
             turn: msg.turn_number,
             state: msg.state,
+            events: msg.events ?? [],
             scoreboard: msg.scoreboard ?? d.scoreboard,
             feed: [...d.feed, ...(msg.feed ?? []).map((f: FeedLine) =>
               ({ ...f, turn: msg.turn_number }))].slice(-80),

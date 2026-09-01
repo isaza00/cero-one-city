@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { get } from "../api/client";
 import type { FeedLine, GameState, MatchPlayerOut } from "../api/types";
-import { Feed, PlayerBadge } from "../components/bits";
+import { Commentary, PlayerBadge } from "../components/bits";
 import MapView from "../pixi/MapView";
 
 interface TurnData { turn_number: number; state: GameState; feed: FeedLine[] }
@@ -115,7 +115,8 @@ export default function Replay() {
           </div>
           <div className="card">
             <h3>Feed up to T{current}</h3>
-            <Feed lines={feedAll} />
+            <Commentary lines={feedAll}
+                        names={new Map(players.map((p) => [p.player_index, p.name]))} />
           </div>
         </div>
       </div>

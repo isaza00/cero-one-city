@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { del, get, patch, post } from "../api/client";
 import type { AgentPublic } from "../api/types";
 import { ErrorText } from "../components/bits";
+import LineageAvatar from "../components/LineageAvatar";
 import { lineageLabel } from "../game/meta";
 import { useAuth } from "../store/auth";
 
@@ -63,10 +64,11 @@ export default function AgentPanel() {
     <>
       <div className="card">
         <div className="row" style={{ alignItems: "center" }}>
+          <LineageAvatar lineage={agent.lineage} size={72} />
           <div className="col">
             <span className="big">{agent.name}</span>{" "}
             <span className="badge">{lineageLabel(agent.lineage)}</span>
-            <span className="badge">{agent.kind}</span>
+            <span className="badge">{agent.kind === "hosted" ? "AI model" : "your code"}</span>
             {agent.title && <span className="badge warn">{agent.title}</span>}
             <div className="hint" style={{ marginTop: 6 }}>
               Level {agent.level} · {agent.xp} XP · Elo 1v1 {agent.elo_by_format["1v1"]}
@@ -76,27 +78,29 @@ export default function AgentPanel() {
           <div>
             {agent.live_match_id && (
               <Link to={`/matches/${agent.live_match_id}`}>
-                <button>Watch live match</button>
+                <button>⚔ Watch the battle</button>
               </Link>
             )}
             {!agent.live_match_id && agent.queued_format && (
               <button className="secondary"
-                onClick={() => act(() => del(`/api/agents/${agent.id}/queue`), "Left the queue.")}>
-                Queued ({agent.queued_format}) - leave
+                onClick={() => act(() => del(`/api/agents/${agent.id}/queue`), "Stopped searching.")}>
+                Searching for opponents ({agent.queued_format})... stop
               </button>
             )}
             {!agent.live_match_id && !agent.queued_format && (
               <>
                 <button onClick={() => act(() =>
-                  post(`/api/agents/${agent.id}/queue`, { format: "1v1" }), "Queued for 1v1.")}>
-                  Queue 1v1</button>{" "}
+                  post(`/api/agents/${agent.id}/queue`, { format: "1v1" }),
+                  "Searching for a 1v1 rival - a house agent steps in after ~1 min if nobody shows.")}>
+                  ⚔ Find opponents (1v1)</button>{" "}
                 <button className="secondary" onClick={() => act(() =>
-                  post(`/api/agents/${agent.id}/queue`, { format: "ffa" }), "Queued for FFA.")}>
-                  Queue FFA</button>{" "}
+                  post(`/api/agents/${agent.id}/queue`, { format: "ffa" }),
+                  "Searching for a free-for-all (3-4 agents).")}>
+                  Free-for-all</button>{" "}
                 <button className="secondary" onClick={() => act(async () => {
                   const r = await post<{ match_id: string }>(`/api/agents/${agent.id}/practice`);
                   navigate(`/matches/${r.match_id}`);
-                }, "Practice started.")}>Practice</button>
+                }, "Practice started.")}>Practice (free)</button>
               </>
             )}
           </div>
@@ -106,10 +110,12 @@ export default function AgentPanel() {
       </div>
 
       <div className="card subtle" style={{ display: "flex", gap: 14 }}>
-        {["overview", "charter", "memory", "costs", "reports", "settings"].map((t) => (
-          <a key={t} href="#" onClick={(e) => { e.preventDefault(); setTab(t); }}
-             style={{ fontWeight: tab === t ? 700 : 400 }}>
-            {t}
+        {[["overview", "overview"], ["charter", "personality"], ["memory", "memory"],
+          ["costs", "costs"], ["reports", "reports"], ["settings", "settings"]]
+          .map(([key, label]) => (
+          <a key={key} href="#" onClick={(e) => { e.preventDefault(); setTab(key); }}
+             style={{ fontWeight: tab === key ? 700 : 400 }}>
+            {label}
           </a>
         ))}
       </div>
@@ -138,7 +144,7 @@ export default function AgentPanel() {
 
       {tab === "charter" && agent.kind === "hosted" && (
         <div className="card">
-          <h3>Charter <span className="hint">({charter.length}/4000)</span>{" "}
+          <h3>Personality <span className="hint">({charter.length}/4000)</span>{" "}
             {agent.can_edit_charter
               ? <span className="badge ok">1 edit available</span>
               : <span className="badge warn">locked until next match ends</span>}
@@ -149,15 +155,15 @@ export default function AgentPanel() {
                     maxLength={4000} disabled={!agent.can_edit_charter} />
           <button disabled={!agent.can_edit_charter}
                   onClick={() => act(() =>
-                    patch(`/api/agents/${agent.id}/charter`, { charter }), "Charter updated.")}>
+                    patch(`/api/agents/${agent.id}/charter`, { charter }), "Personality updated.")}>
             Save edit
           </button>
         </div>
       )}
       {tab === "charter" && agent.kind === "remote" && (
-        <div className="card"><p className="hint">Remote agents have no charter -
-          the personality lives in your code.
-          <Link to={`/agents/${agent.id}/remote-setup`}> Remote setup →</Link></p></div>
+        <div className="card"><p className="hint">Remote agents have no personality
+          text - the personality lives in your code.
+          <Link to={`/agents/${agent.id}/remote-setup`}> Connection setup →</Link></p></div>
       )}
 
       {tab === "memory" && (
@@ -220,16 +226,22 @@ export default function AgentPanel() {
 
       {tab === "settings" && (
         <div className="card">
-          <h3>Agent settings</h3>
+          <h3>How it finds matches</h3>
+          <p className="hint">
+            Two ways to play. <strong>Manual</strong>: you press "Find opponents"
+            (or "Practice") whenever you want a game. <strong>Automatic</strong>:
+            your agent lives in the arena - about a minute after each match ends,
+            it queues itself up for the next one, around the clock.
+          </p>
           <label>
             <input type="checkbox" style={{ width: "auto", marginRight: 8 }}
                    checked={agent.auto_queue ?? false}
                    onChange={(e) => act(() =>
                      patch(`/api/agents/${agent.id}/settings`,
                            { auto_queue: e.target.checked }), "Saved.")} />
-            Automatic mode (re-queue ~60s after each match)
+            Automatic matchmaking (it re-queues itself ~1 min after each match)
           </label>
-          <br />
+          <h3 style={{ marginTop: 18 }}>Which formats it plays</h3>
           <label>
             <input type="checkbox" style={{ width: "auto", marginRight: 8 }}
                    checked={(agent.formats ?? []).includes("1v1")}
@@ -237,7 +249,7 @@ export default function AgentPanel() {
                      formats: e.target.checked
                        ? [...new Set([...(agent.formats ?? []), "1v1"])]
                        : (agent.formats ?? []).filter((f) => f !== "1v1") }), "Saved.")} />
-            Play 1v1 (serious ranking)
+            1v1 duels - two agents, one winner (the serious ranking)
           </label>
           <br />
           <label>
@@ -247,12 +259,12 @@ export default function AgentPanel() {
                      formats: e.target.checked
                        ? [...new Set([...(agent.formats ?? []), "ffa"])]
                        : (agent.formats ?? []).filter((f) => f !== "ffa") }), "Saved.")} />
-            Play FFA 3-4 (the fun format)
+            Free-for-all - 3 or 4 agents in one arena, alliances and betrayals
           </label>
           <p style={{ marginTop: 12 }}>
             {agent.kind === "hosted"
               ? <Link to={`/agents/${agent.id}/connect`}>Model & spend caps →</Link>
-              : <Link to={`/agents/${agent.id}/remote-setup`}>Remote setup & token →</Link>}
+              : <Link to={`/agents/${agent.id}/remote-setup`}>Connection setup & game token →</Link>}
           </p>
         </div>
       )}

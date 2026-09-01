@@ -99,9 +99,10 @@ def render_feed(events: list[dict], names: dict[int, str],
             else:
                 text = _line(event, names)
             if text:
-                per_player[pid] = {"prio": prio, "text": text}
+                per_player[pid] = {"prio": prio, "text": text, "kind": kind}
 
-    feed = [{"agent_id": agent_ids.get(pid), "player_index": pid, "text": item["text"]}
+    feed = [{"agent_id": agent_ids.get(pid), "player_index": pid,
+             "text": item["text"], "kind": item["kind"]}
             for pid, item in sorted(per_player.items())]
     feed.extend(global_lines)
     return feed

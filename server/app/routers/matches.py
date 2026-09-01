@@ -20,8 +20,8 @@ from cero_engine.rules import MAP_SIZE_1V1, MAP_SIZE_FFA, MAX_TURNS, RULESET_VER
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 
-SEASON_SHOUT_LIMIT = 30
-MATCH_SHOUT_LIMIT = 2
+SEASON_SHOUT_LIMIT = 90
+MATCH_SHOUT_LIMIT = 6
 
 
 async def _players_out(db: AsyncSession, match_id: uuid.UUID) -> list[dict]:
@@ -149,7 +149,15 @@ async def shout(match_id: uuid.UUID, body: ShoutBody,
         Shout.match_id == match_id, Shout.agent_id == agent.id))).scalar_one()
     if used_match >= MATCH_SHOUT_LIMIT:
         raise HTTPException(409, detail={"code": "match_limit",
-                                         "message": f"{MATCH_SHOUT_LIMIT} shouts per match"})
+                                         "message": f"{MATCH_SHOUT_LIMIT} messages per match"})
+    # Guidance, not remote control: at most one message per game turn.
+    same_turn = (await db.execute(select(func.count(Shout.id)).where(
+        Shout.match_id == match_id, Shout.agent_id == agent.id,
+        Shout.created_turn == match.current_turn))).scalar_one()
+    if same_turn > 0:
+        raise HTTPException(409, detail={
+            "code": "turn_limit",
+            "message": "one message per turn - wait for the next turn"})
     if agent.season_shouts_used >= SEASON_SHOUT_LIMIT:
         raise HTTPException(409, detail={"code": "season_limit",
                                          "message": f"{SEASON_SHOUT_LIMIT} shouts per season"})
@@ -212,9 +220,11 @@ async def join_custom(code: str, body: JoinBody,
     needed = {"1v1": 2, "ffa3": 3, "ffa4": 4}[match.format]
     if len(players) >= needed:
         raise HTTPException(409, detail={"code": "full", "message": "match is full"})
-    if any(p.owner_id == user.id for p in players):
-        raise HTTPException(409, detail={"code": "owner_dup",
-                                         "message": "one agent per owner per match"})
+    # Custom matches are unranked, so self-play is allowed: the same owner may
+    # field several of their agents against each other - just not the same agent.
+    if any(p.agent_id == agent.id for p in players):
+        raise HTTPException(409, detail={"code": "agent_dup",
+                                         "message": "that agent already joined - pick another one"})
     db.add(MatchPlayer(match_id=match.id, agent_id=agent.id, owner_id=user.id,
                        player_index=len(players), lineage=agent.lineage,
                        level_snapshot=agent.level,
