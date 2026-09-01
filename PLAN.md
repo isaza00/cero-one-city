@@ -537,9 +537,11 @@ metal, compute_used/cap, upkeep_next, income_estimate}`, `research {firmware,
 done, in_progress}`, own `units` (with status + standing orders) and
 `buildings` (production/research/accumulator/dispute), `visible_map {size,
 notable_tiles (veins/scrap/rubble/blocked in vision), explored_only (last-seen
-buildings), explored_pct}`, `enemies_visible` by band — **A**: direction +
-fuzzy strength ("few/several/many"); **B**: type + count + 4-tile area; **C**:
-exact id/type/x/y/hp/heading — `diplomacy {truces, proposals_in, joint_pacts,
+buildings), explored_pct}`, `enemies_visible` — every enemy inside vision,
+always fully identified (id/type/x/y/hp/heading; **[as-built]** the old A/B/C
+detail bands no longer degrade in-vision intel: you can target what you can
+see, AoE2-style — bands still label levels for deadline/history/tokens) —
+`diplomacy {truces, proposals_in, joint_pacts,
 available_actions}`, `camps`, `score_estimate {you, visible_best_rival}`, plus
 server-merged `history` (last N turns of your feed lines), `last_turn
 {order_errors, events}`, `shouts_from_owner` (delivered exactly once) and
@@ -548,8 +550,12 @@ server-merged `history` (last N turns of your feed lines), `last_turn
 ### 6.3 Response schema
 
 Strict JSON: `{orders: [≤80 order objects], memory_notes?: [≤20 × 280]}`. One
-flat order object with a `type` enum (move/attack/gather/build/repair/produce/
-research/diplomacy/capture/fuse/recruit/stop) and nullable fields — enforced
+flat order object with a `type` enum (move/attack/attack_move/gather/build/
+repair/produce/research/diplomacy/capture/fuse/recruit/stop) and nullable
+fields — **[as-built]** `attack_move {to:[x,y]}` marches toward a point,
+engages any enemy entering the unit's vision and resumes afterwards; military
+units also auto-fire at the nearest enemy inside weapon range even without
+orders (workers never do) — enforced
 via Anthropic structured outputs (`output_config.format` json_schema), OpenAI/
 OpenRouter `response_format` json_schema (non-strict, with a json_object
 fallback), Google `responseMimeType: application/json`; a tolerant extractor

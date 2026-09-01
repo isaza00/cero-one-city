@@ -12,7 +12,8 @@ from cero_engine import rules
 from cero_engine.fog import entity_visible_to, visible_tiles
 from cero_engine.orders import has_truce
 from cero_engine.state import Entity, State, tk
-from cero_engine.stats import turret_attack, turret_range, unit_armor, unit_attack, unit_range
+from cero_engine.stats import (is_combat_unit, turret_attack, turret_range,
+                               unit_armor, unit_attack, unit_range)
 
 
 def combat_phase(state: State, ctx) -> None:
@@ -30,6 +31,15 @@ def combat_phase(state: State, ctx) -> None:
             continue
         order = unit.standing_order or {}
         if order.get("type") != "attack":
+            # AoE2-style stance: a military unit not committed to a target
+            # automatically engages the nearest enemy inside its weapon range.
+            target = _auto_target(state, unit, vision_of)
+            if target is not None:
+                dmg = _unit_damage(state, unit, target)
+                if dmg > 0:
+                    attacks.append((unit.id, unit, target, dmg))
+                    if unit.type == "human":
+                        unit.revealed_until = state.turn + 1
             continue
         target = state.ent(order.get("target_id", -1))
         if target is None or target.hp <= 0:
@@ -87,6 +97,36 @@ def combat_phase(state: State, ctx) -> None:
         attacks.append((turret.id, turret, target, dmg))
 
     _apply_attacks(state, ctx, attacks)
+
+
+def _auto_target(state: State, unit: Entity, vision_of) -> Entity | None:
+    """Nearest visible enemy within weapon range (units before buildings,
+    then distance, then id - deterministic). Workers never auto-engage."""
+    if not is_combat_unit(unit.type):
+        return None
+    if (unit.standing_order or {}).get("type") == "fusing":
+        return None
+    player = state.players[unit.owner]
+    rng = unit_range(player, unit.type)
+    best: tuple[int, int, int] | None = None
+    best_target: Entity | None = None
+    for e in state.entities_sorted():
+        if e.owner == unit.owner or e.hp <= 0 or e.id == unit.id:
+            continue
+        if e.owner < 0:
+            continue  # stances never pick fights with neutral camps
+        if has_truce(state, unit.owner, e.owner):
+            continue
+        if not _in_range(unit, e, rng):
+            continue
+        if e.is_unit and not entity_visible_to(state, e, unit.owner,
+                                               vision_of(unit.owner)):
+            continue
+        dist = min(max(abs(fx - unit.x), abs(fy - unit.y)) for fx, fy in e.footprint())
+        key = (0 if e.is_unit else 1, dist, e.id)
+        if best is None or key < best:
+            best, best_target = key, e
+    return best_target
 
 
 def _guard_target(state: State, guard: Entity) -> Entity | None:
@@ -168,6 +208,15 @@ def _apply_attacks(state: State, ctx, attacks: list) -> None:
         if (attacker.owner is not None and attacker.owner >= 0 and target.owner >= 0
                 and target.owner != attacker.owner):
             state.players[attacker.owner].damage_dealt += applied
+        # One event per landed hit so the renderer can draw the shot, the
+        # impact, and the kill exactly where they happened.
+        ranged = (attacker.is_building
+                  or rules.UNITS[attacker.type]["range"] > 1)
+        ctx.emit(type="attack", attacker=attacker.id, attacker_type=attacker.type,
+                 owner=attacker.owner, target=target.id, target_type=target.type,
+                 target_owner=target.owner, src=[attacker.x, attacker.y],
+                 dst=[target.x, target.y], dmg=applied, ranged=ranged,
+                 kill=target.hp <= 0)
 
 
 def _apply_damage(state: State, ctx, target: Entity, dmg: int,

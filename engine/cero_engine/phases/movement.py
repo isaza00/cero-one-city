@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from cero_engine import rules
 from cero_engine.fog import entity_visible_to, visible_tiles
+from cero_engine.orders import has_truce
 from cero_engine.state import Entity, State
-from cero_engine.stats import unit_move, unit_range
+from cero_engine.stats import is_combat_unit, unit_move, unit_range, unit_vision
 
 STEP_ORDER = ((0, -1), (1, 0), (0, 1), (-1, 0))  # N, E, S, W tie-break
 HEADINGS = {(0, -1): "N", (1, 0): "E", (0, 1): "S", (-1, 0): "W"}
@@ -83,6 +84,9 @@ def movement_phase(state: State, ctx) -> None:
 def _finish_arrival(unit: Entity, order: dict) -> None:
     if order.get("type") == "move":
         unit.standing_order = None
+    elif order.get("type") == "attack_move" and not order.get("target_id"):
+        # Destination reached with nothing left to fight: the sweep is over.
+        unit.standing_order = None
 
 
 def _goal_tiles(state: State, ctx, unit: Entity, order: dict, vision_of, building_tiles: set):
@@ -100,6 +104,35 @@ def _goal_tiles(state: State, ctx, unit: Entity, order: dict, vision_of, buildin
         to = tuple(order["to"])
         if not walkable(to):
             # Aim for the nearest adjacent walkable tile instead.
+            adj = {(to[0] + dx, to[1] + dy) for dx, dy in
+                   ((0, -1), (1, 0), (0, 1), (-1, 0), (1, -1), (1, 1), (-1, 1), (-1, -1))}
+            goals = {t for t in adj if walkable(t)}
+            return (goals, False) if goals else None
+        return {to}, False
+
+    if kind == "attack_move":
+        # AoE2 attack-move: advance to `to`, but engage any enemy that enters
+        # this unit's vision on the way; when the fight ends, resume the march.
+        player = state.players[unit.owner]
+        rng = unit_range(player, unit.type)
+        target = state.ent(order.get("target_id", -1)) if "target_id" in order else None
+        if (target is None or target.hp <= 0
+                or (target.owner >= 0 and has_truce(state, unit.owner, target.owner))
+                or (target.is_unit and not entity_visible_to(
+                    state, target, unit.owner, vision_of(unit.owner)))):
+            order.pop("target_id", None)
+            target = _acquire_target(state, unit, vision_of(unit.owner))
+            if target is not None:
+                order["target_id"] = target.id
+        if target is not None:
+            if (unit.x, unit.y) in _tiles_in_range_set(target, rng):
+                return {(unit.x, unit.y)}, False  # in range: hold and fire
+            in_range = {t for t in _tiles_in_range(state, target, rng) if walkable(t)}
+            if in_range:
+                return in_range, False
+            order.pop("target_id", None)  # unreachable: keep marching
+        to = tuple(order["to"])
+        if not walkable(to):
             adj = {(to[0] + dx, to[1] + dy) for dx, dy in
                    ((0, -1), (1, 0), (0, 1), (-1, 0), (1, -1), (1, 1), (-1, 1), (-1, -1))}
             goals = {t for t in adj if walkable(t)}
@@ -159,6 +192,36 @@ def _goal_tiles(state: State, ctx, unit: Entity, order: dict, vision_of, buildin
         return (goals, False) if goals else None
 
     return None
+
+
+def _acquire_target(state: State, unit: Entity, vision: set) -> Entity | None:
+    """Attack-move acquisition: nearest enemy inside this unit's vision
+    (units before buildings, then distance, then id - deterministic).
+    Non-combat units never acquire; they just travel."""
+    if not is_combat_unit(unit.type):
+        return None
+    player = state.players[unit.owner]
+    vis = unit_vision(player, unit.type)
+    best_key: tuple[int, int, int] | None = None
+    best: Entity | None = None
+    for e in state.entities_sorted():
+        if e.owner == unit.owner or e.owner < 0 or e.hp <= 0:
+            continue
+        if not state.players[e.owner].alive:
+            continue
+        if has_truce(state, unit.owner, e.owner):
+            continue
+        d = min(max(abs(fx - unit.x), abs(fy - unit.y)) for fx, fy in e.footprint())
+        if d > vis:
+            continue
+        if e.is_unit and not entity_visible_to(state, e, unit.owner, vision):
+            continue
+        if e.is_building and not any((fx, fy) in vision for fx, fy in e.footprint()):
+            continue
+        key = (0 if e.is_unit else 1, d, e.id)
+        if best_key is None or key < best_key:
+            best_key, best = key, e
+    return best
 
 
 def _guard_goal(state: State, guard: Entity, building_tiles: set):

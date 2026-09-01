@@ -55,7 +55,7 @@ class TurtleBot(Bot):
         if towers:
             for u in towers + escorts:
                 so = u.get("standing_order") or {}
-                if so.get("type") == "attack":
+                if so.get("type") in ("attack", "attack_move"):
                     continue
                 self.attack_move(obs, orders, u)
         else:

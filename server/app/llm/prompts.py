@@ -10,8 +10,8 @@ import json
 
 from cero_engine import rules
 
-ORDER_TYPES = ["move", "attack", "gather", "build", "repair", "produce", "research",
-               "diplomacy", "capture", "fuse", "recruit", "stop"]
+ORDER_TYPES = ["move", "attack", "attack_move", "gather", "build", "repair", "produce",
+               "research", "diplomacy", "capture", "fuse", "recruit", "stop"]
 
 ORDERS_SCHEMA: dict = {
     "type": "object",
@@ -148,6 +148,9 @@ ESSENTIAL RULES
 - Victory: destroy every rival core, or have the most points at turn 40
   (bank + unit costs + 2x building costs + 25 per tech + damage dealt + 100 per core kill).
 - Orders are persistent: units keep their last order until you give a new one or "stop".
+- Combat units automatically fire at the nearest enemy inside their weapon range (workers never do).
+- "attack_move" is how a pro advances an army: the unit marches toward [x,y], engages any enemy
+  that enters its vision on the way, and resumes the march when the fight is over.
 - Illegal orders are dropped (the legal subset still applies) and the error is reported to you next turn.
 
 UNITS
@@ -162,6 +165,7 @@ TECHS
 RESPONSE FORMAT: a single valid JSON object with "orders" (list) and optional "memory_notes"
 (your private notes, max 20 strings x 280 chars - they replace the previous notes and come back to you next turn).
 Order shapes: {{"type":"move","actor_id":id,"to":[x,y]}} | {{"type":"attack","actor_id":id,"target_id":id}} |
+{{"type":"attack_move","actor_id":id,"to":[x,y]}} |
 {{"type":"gather","actor_id":worker,"target":[x,y]}} | {{"type":"build","actor_id":worker,"building":"rack","anchor":[x,y]}} |
 {{"type":"repair","actor_id":worker,"target_id":id}} | {{"type":"produce","actor_id":building,"unit":"striker"}} |
 {{"type":"research","actor_id":building,"tech":"firmware_v2"}} | {{"type":"capture","actor_id":leech,"target_id":rack}} |

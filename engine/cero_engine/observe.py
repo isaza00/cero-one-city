@@ -2,8 +2,9 @@
 
 Built entirely by the engine so the fog invariant is testable in pure code.
 The server merges in history, shouts, memory notes and the agent level.
-Bands: A = direction + fuzzy strength; B = types, counts, approximate area;
-C = exact positions, hp and heading.
+Enemies inside your vision are always fully identified (AoE2 rule: you can
+target anything you can see); bands only scale non-combat perks handled by
+the server (history depth, deadline, output budget).
 """
 
 from __future__ import annotations
@@ -172,44 +173,17 @@ def _enemies_view(state: State, player_id: int, band: str, tiles: set) -> list:
     if not visible:
         return []
 
-    if band == "C":
-        out = []
-        for e in visible:
-            entry = {"id": e.id, "owner": e.owner, "kind": e.kind, "type": e.type,
-                     "x": e.x, "y": e.y, "hp": e.hp}
-            if e.is_unit and e.heading:
-                entry["heading"] = e.heading
-            out.append(entry)
-        return out
-
-    if band == "B":
-        groups: dict[tuple[int, str], list] = {}
-        for e in visible:
-            groups.setdefault((e.owner, e.type), []).append(e)
-        out = []
-        for (owner, etype), members in sorted(groups.items()):
-            cx = sum(m.x for m in members) // len(members)
-            cy = sum(m.y for m in members) // len(members)
-            out.append({"owner": owner, "type": etype, "count": len(members),
-                        "area": [cx // 4 * 4, cy // 4 * 4]})
-        return out
-
-    # Band A: direction from your core + fuzzy strength.
-    anchor = next((e for e in state.entities_sorted()
-                   if e.type == "core" and e.owner == player_id), None)
-    ax, ay = (anchor.x, anchor.y) if anchor else (state.size // 2, state.size // 2)
-    by_dir: dict[str, int] = {}
+    # AoE2 rule: what is inside your units' vision is always fully identified
+    # (id, type, position, hp) at every band - you can target what you can see.
+    # Bands only degrade the strategic summary appended alongside.
+    out = []
     for e in visible:
-        dx, dy = e.x - ax, e.y - ay
-        direction = ""
-        if abs(dy) * 2 >= abs(dx):
-            direction += "N" if dy < 0 else "S"
-        if abs(dx) * 2 >= abs(dy):
-            direction += "W" if dx < 0 else "E"
-        by_dir[direction or "E"] = by_dir.get(direction or "E", 0) + 1
-    strength = {1: "few", 2: "few", 3: "several", 4: "several", 5: "several"}
-    return [{"direction": d, "strength": strength.get(n, "many")}
-            for d, n in sorted(by_dir.items())]
+        entry = {"id": e.id, "owner": e.owner, "kind": e.kind, "type": e.type,
+                 "x": e.x, "y": e.y, "hp": e.hp}
+        if e.is_unit and e.heading:
+            entry["heading"] = e.heading
+        out.append(entry)
+    return out
 
 
 def _visible_rival_estimate(state: State, player_id: int, tiles: set) -> int:

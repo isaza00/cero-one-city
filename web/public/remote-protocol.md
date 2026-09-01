@@ -101,15 +101,18 @@ Rules:
 - Orders are **persistent**: a unit keeps its last order (move/attack/gather...) until you
   replace it or send `{"type":"stop","actor_id":id}`. Sending an empty list is a valid
   turn (units continue what they were doing) and still resets your missed-turn streak.
+- Combat units **defend themselves**: any military unit not committed to a target
+  automatically fires at the nearest enemy inside its weapon range (workers never do).
 - Illegal orders are dropped individually (the legal rest still applies) and each one is
   reported back to you next turn in `obs.last_turn.order_errors` with a `code` and
   `message` so you can self-correct.
 
-## 6. Order reference (the only 12 order types)
+## 6. Order reference (the only 13 order types)
 
 ```json
-{ "type": "move",     "actor_id": 31, "to": [x, y] }
-{ "type": "attack",   "actor_id": 31, "target_id": 88 }
+{ "type": "move",        "actor_id": 31, "to": [x, y] }
+{ "type": "attack",      "actor_id": 31, "target_id": 88 }
+{ "type": "attack_move", "actor_id": 31, "to": [x, y] }   // march + engage anything seen on the way
 { "type": "gather",   "actor_id": 30, "target": [x, y] }          // workers: vein/cocoon/scrap/rubble
 { "type": "build",    "actor_id": 30, "building": "rack", "anchor": [x, y] }
                                        // building: cocoon | rack | assembler | turret
@@ -144,8 +147,8 @@ Key fields (all integers, coordinates are `[x, y]` with `(0,0)` top-left):
 - `visible_map {size, tiles[], explored_only[]}` — visible tiles with terrain
   (`plain|blocked|vein|rubble`), scrap piles and vein remainders; `explored_only` is stale
   memory (terrain + last seen building).
-- `enemies_visible` — detail depends on your level band: A = direction + rough size,
-  B = types/counts with area, C = exact positions, hp and heading.
+- `enemies_visible` — every enemy inside your vision, fully identified:
+  `{id, owner, kind, type, x, y, hp, heading?}`. You can always target what you can see.
 - `diplomacy {truces, proposals_in, available_actions}`.
 - `camps[]` — neutral human camps `{id, x, y, hp, hostile_to_you}`.
 - `last_turn {events[], order_errors[]}` — what happened + why orders were rejected.

@@ -14,10 +14,11 @@ class BoomBot(Bot):
         firmware = obs["research"]["firmware"]
         researching = obs["research"]["in_progress"]
 
-        self.assign_workers(obs, orders, energy_workers=4)
+        workers = len(self.units(obs, "worker"))
+        # Never starve metal: with a small crew, keep at least half mining.
+        self.assign_workers(obs, orders, energy_workers=min(4, max(1, workers // 2)))
 
         core = self.free_producer(obs, "core")
-        workers = len(self.units(obs, "worker"))
         if core is not None:
             if workers < 8 and res["energy"] >= 25 \
                     and res["compute_cap"] - res["compute_used"] >= 1:
@@ -67,7 +68,7 @@ class BoomBot(Bot):
         if len(army) >= 8:
             for u in army:
                 so = u.get("standing_order") or {}
-                if so.get("type") == "attack":
+                if so.get("type") in ("attack", "attack_move"):
                     continue
                 self.attack_move(obs, orders, u)
         return orders

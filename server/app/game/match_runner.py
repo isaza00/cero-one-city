@@ -207,10 +207,19 @@ class MatchRunner:
                     lineage=seat.agent.lineage,
                     deadline_s=max(seat.mp.deadline_ms // 1000, 2))
 
+            # Preload remote lockers sequentially: the gather below runs the
+            # seats concurrently and they share one DB session, so no seat may
+            # touch self.db while gather is in flight (SQLAlchemy forbids
+            # concurrent ops on a session). Reads happen here, writes after.
+            self._locker_reads = await self._load_lockers(observations)
+            self._locker_writes: dict = {}
+
             results = await asyncio.gather(*[
                 self._collect_orders(match, seat, turn_no, observations[idx],
                                      game_budget_ok)
                 for idx, seat in self.seats.items() if idx in observations])
+
+            await self._flush_locker_writes()
 
             orders_by_player: dict[int, list] = {}
             raw_orders_log: dict[str, list] = {}
@@ -297,11 +306,13 @@ class MatchRunner:
 
     async def _remote_orders(self, seat: Seat, turn_no: int, obs: dict,
                              deadline_s: int) -> dict | None:
-        locker = (await self.db.execute(select(RemoteLocker).where(
-            RemoteLocker.agent_id == seat.agent.id))).scalar_one_or_none()
+        # No DB access here: this runs under asyncio.gather with the other
+        # seats over a shared session. Lockers are read into self._locker_reads
+        # before the gather and written from self._locker_writes after it.
+        locker_in = self._locker_reads.get(seat.agent.id)
         payload = {"type": "observation", "match_id": str(self.match_id),
                    "turn": turn_no, "deadline_ms": deadline_s * 1000, "obs": obs,
-                   "locker_b64": (locker.data.decode() if locker else None)}
+                   "locker_b64": (locker_in.decode() if locker_in else None)}
         await self.redis.publish(f"agent:push:{seat.agent.id}", json.dumps(payload))
         key = f"agent:orders:{self.match_id}:{turn_no}:{seat.mp.player_index}"
         res = await self.redis.blpop(key, timeout=deadline_s)
@@ -313,13 +324,33 @@ class MatchRunner:
             return None
         locker_b64 = reply.get("locker_b64")
         if isinstance(locker_b64, str) and len(locker_b64) <= 65536:
-            if locker is None:
-                self.db.add(RemoteLocker(agent_id=seat.agent.id,
-                                         data=locker_b64.encode()))
-            else:
-                locker.data = locker_b64.encode()
-            await self.db.commit()
+            self._locker_writes[seat.agent.id] = locker_b64.encode()
         return reply if isinstance(reply, dict) else None
+
+    async def _load_lockers(self, observations: dict) -> dict:
+        """Read every active remote seat's locker up front (sequential)."""
+        agent_ids = [seat.agent.id for idx, seat in self.seats.items()
+                     if idx in observations and seat.kind == "remote"]
+        if not agent_ids:
+            return {}
+        rows = (await self.db.execute(select(RemoteLocker).where(
+            RemoteLocker.agent_id.in_(agent_ids)))).scalars().all()
+        return {row.agent_id: row.data for row in rows}
+
+    async def _flush_locker_writes(self) -> None:
+        """Persist locker updates gathered during the turn (sequential)."""
+        if not self._locker_writes:
+            return
+        existing = (await self.db.execute(select(RemoteLocker).where(
+            RemoteLocker.agent_id.in_(list(self._locker_writes))))).scalars().all()
+        by_agent = {row.agent_id: row for row in existing}
+        for agent_id, data in self._locker_writes.items():
+            row = by_agent.get(agent_id)
+            if row is None:
+                self.db.add(RemoteLocker(agent_id=agent_id, data=data))
+            else:
+                row.data = data
+        await self.db.commit()
 
     async def _game_budgets_ok(self) -> bool:
         house = await costs.day_spend_by_purpose_micros(self.db, "house")

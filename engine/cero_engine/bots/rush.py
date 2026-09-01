@@ -34,7 +34,7 @@ class RushBot(Bot):
         if len(army) >= 3:
             for u in army:
                 so = u.get("standing_order") or {}
-                if so.get("type") == "attack":
+                if so.get("type") in ("attack", "attack_move"):
                     continue
                 self.attack_move(obs, orders, u)
         return orders

@@ -166,10 +166,11 @@ class Bot:
         enemies = self.enemies(obs)
         target = self.nearest(unit["x"], unit["y"], enemies)
         if target is not None:
-            orders.append({"actor_id": unit["id"], "type": "attack", "target_id": target["id"]})
+            orders.append({"actor_id": unit["id"], "type": "attack_move",
+                           "to": [target["x"], target["y"]]})
         else:
             cx, cy = self.enemy_corner(obs)
-            orders.append({"actor_id": unit["id"], "type": "move", "to": [cx, cy]})
+            orders.append({"actor_id": unit["id"], "type": "attack_move", "to": [cx, cy]})
 
     # ---------------------------------------------------------------- interface
     def act(self, obs: dict) -> list[dict]:  # pragma: no cover - overridden

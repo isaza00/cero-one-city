@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from cero_engine import rules
 from cero_engine.state import Entity, State
 
-ORDER_TYPES = ("move", "attack", "gather", "build", "repair", "produce", "research",
-               "diplomacy", "capture", "fuse", "recruit", "stop")
+ORDER_TYPES = ("move", "attack", "attack_move", "gather", "build", "repair", "produce",
+               "research", "diplomacy", "capture", "fuse", "recruit", "stop")
 DIPLO_ACTIONS = ("propose_truce", "accept_truce", "break_truce",
                  "propose_joint_attack", "accept_joint_attack")
 
@@ -103,6 +103,18 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
             return False
         if actor.type == "watcher" or rules.UNITS[actor.type]["mov"] > 0:
             actor.standing_order = {"type": "move", "to": [to[0], to[1]]}
+            return True
+        _err(errors, actor.id, otype, "cannot_move", "this unit cannot move")
+        return False
+
+    if otype == "attack_move":
+        to = order.get("to")
+        if (not actor.is_unit or not isinstance(to, list) or len(to) != 2
+                or not all(isinstance(v, int) for v in to) or not state.in_bounds(*to)):
+            _err(errors, actor.id, otype, "bad_target", "attack_move needs an in-bounds [x,y]")
+            return False
+        if actor.type == "watcher" or rules.UNITS[actor.type]["mov"] > 0:
+            actor.standing_order = {"type": "attack_move", "to": [to[0], to[1]]}
             return True
         _err(errors, actor.id, otype, "cannot_move", "this unit cannot move")
         return False
