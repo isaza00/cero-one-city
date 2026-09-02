@@ -777,3 +777,12 @@ tr:hover td { background: rgba(255, 255, 255, 0.03); }
 .abx-res svg { width: 10px; height: 10px; }
 .abx-res.energy { color: #ffd54f; }
 .abx-res.metal { color: #aab4c4; }
+/* s2.0 layout: stats in the center, minimap bottom-right (AoE2 puts it there). */
+.bottom-center { flex: 1; display: flex; justify-content: center; background: none; border: none; padding: 0; }
+.minimap-box {
+  flex-shrink: 0;
+  background: rgba(8, 11, 18, 0.85);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 6px;
+}

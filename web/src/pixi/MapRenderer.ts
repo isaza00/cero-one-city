@@ -123,7 +123,6 @@ export class MapRenderer {
   private viewW = 640;
   private viewH = 640;
   private zoom = 1;
-  private coverDefault = false;
   private userCam = false;
   private dragging = false;
   private dragLast = { x: 0, y: 0 };
@@ -153,10 +152,9 @@ export class MapRenderer {
 
   // ------------------------------------------------------------- lifecycle
 
-  async init(host: HTMLElement, viewW = 640, viewH = 640, cover = false): Promise<void> {
+  async init(host: HTMLElement, viewW = 640, viewH = 640, _cover = false): Promise<void> {
     this.viewW = Math.max(60, viewW);
     this.viewH = Math.max(60, viewH);
-    this.coverDefault = cover;
     const app = new Application();
     await app.init({ width: this.viewW, height: this.viewH, background: 0x0b0f14,
                      antialias: false, autoDensity: true, roundPixels: true,
@@ -212,9 +210,10 @@ export class MapRenderer {
   }
 
   private modeZoom(): number {
-    // Default view: the whole battlefield, regular size. The wheel zooms in
-    // (up to 2.4x) and the minimap navigates when zoomed.
-    return this.fitZoom();
+    // Default view: the whole battlefield, a notch closer than "fit" (fit
+    // reads too small on wide screens); the wheel zooms between fit and 2.4x
+    // and the minimap navigates when zoomed.
+    return this.fitZoom() * 1.3;
   }
 
   private resetCamera(): void {
@@ -417,18 +416,7 @@ export class MapRenderer {
       this.worldW = state.size * TILE_W;
       this.worldH = state.size * TILE_H + TILE_H; // headroom for tall sprites
       this.terrainKey = "";
-      this.resetCamera();
-      // AoE2 opens on a town center, not on empty midfield: start the live
-      // camera over the first core instead of the map's middle.
-      if (this.coverDefault) {
-        const core = Object.values(state.entities).find((e) => e.type === "core");
-        if (core) {
-          const c = this.px(core.x + 0.5, core.y + 0.5);
-          this.root.x = this.viewW / 2 - c.x * this.zoom;
-          this.root.y = this.viewH / 2 - c.y * this.zoom;
-          this.applyCamera();
-        }
-      }
+      this.resetCamera();  // whole map, centered (MAP-VIEW-SPEC invariant 1)
     }
 
     // Learn the live turn cadence (EMA), so glides last one whole turn.

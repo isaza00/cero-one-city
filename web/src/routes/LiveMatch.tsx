@@ -510,10 +510,6 @@ export default function LiveMatch() {
             )}
           </div>
           <div className="bottom-center">
-            <Minimap state={data.state} controller={controller}
-                     perspective={perspective} />
-          </div>
-          <div className="bottom-right">
             <table className="hud-stats-table">
               <thead>
                 <tr>
@@ -538,6 +534,12 @@ export default function LiveMatch() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="bottom-right">
+            <div className="minimap-box">
+              <Minimap state={data.state} controller={controller}
+                       perspective={perspective} />
+            </div>
           </div>
         </div>
       </div>

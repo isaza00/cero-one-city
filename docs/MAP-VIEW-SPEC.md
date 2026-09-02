@@ -5,13 +5,15 @@ keep ALL of these true. Verify with `node web/tools/snap-live.mjs out.png`
 against a live match — once in default view, once zoomed, once per fog mode.
 
 ## 1. Camera
-- Reloading a live match opens at **fit zoom**: the whole map visible at
-  regular size. No forced close-up, no center-on-anything that moves the view.
+- Reloading a live match opens at **1.3x fit zoom**, centered: the whole map
+  still on screen but not tiny. No forced close-up, no center-on-anything
+  that moves the view.
 - Mouse wheel zooms between fit and 2.4×, anchored under the cursor.
 - Drag and minimap-click pan only when zoomed in; the world never drifts
   off-screen (camera clamped).
 
 ## 2. Minimap
+- Bottom-RIGHT of the bottom bar (the stats table sits in the center).
 - Square, top-down, one cell per tile, faint tile lattice.
 - Shows the SAME fog as the main view (black unknown, dim explored, lit
   visible; entities only where the current perspective could see them).
