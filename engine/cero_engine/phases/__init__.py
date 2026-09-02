@@ -16,7 +16,11 @@ from cero_engine.phases.combat import combat_phase, destruction_phase
 from cero_engine.phases.diplomacy import diplomacy_phase
 from cero_engine.phases.economy import gathering_phase, maintenance_phase
 from cero_engine.phases.movement import movement_phase
-from cero_engine.phases.production import production_phase, research_phase
+from cero_engine.phases.production import (
+    construction_phase,
+    production_phase,
+    research_phase,
+)
 from cero_engine.state import State
 
 
@@ -68,7 +72,8 @@ def advance(state: State, orders_by_player: dict[int, list],
     combat_phase(state, ctx)           # 6
     destruction_phase(state, ctx)      # 7
     capture_phase(state, ctx)          # 8
-    gathering_phase(state, ctx)        # 9
+    construction_phase(state, ctx)     # 9a: crews that arrived this turn hammer
+    gathering_phase(state, ctx)        # 9b: gather / bank / repair
     closing_phase(state, ctx)          # 10
 
     state.events_last_turn = ctx.events

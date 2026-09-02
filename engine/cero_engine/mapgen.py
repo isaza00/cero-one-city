@@ -3,6 +3,13 @@
 Fairness comes from symmetry: 1v1 maps are 180-degree symmetric, FFA maps are
 90-degree symmetric with 4 slots (ffa3 leaves one slot empty; its resources stay
 neutral on the map).
+
+NOMAD START (s2.0, the AoE2 "Nomad" opening): nobody owns a building. Each slot
+gets a crew of workers plus one striker standing on cleared ground, next to the
+resources a well-placed core banks instantly: a wild pod cluster (energy) two
+tiles east of the ideal core site and a metal vein two tiles west of it. A
+second pod cluster and a second vein sit further out - the "back" resources a
+depot unlocks - and the middle of the map holds the contested El Dorado.
 """
 
 from __future__ import annotations
@@ -11,16 +18,23 @@ from cero_engine import rules
 from cero_engine.fog import update_fog
 from cero_engine.pcg import PCG32
 from cero_engine.state import Entity, Player, State, tk
-from cero_engine.stats import building_max_hp, unit_max_hp
+from cero_engine.stats import unit_max_hp
 
-# Base layout for slot 0 (top-left corner); other slots are symmetry transforms.
-CORE_ANCHOR = (3, 3)
-COCOON_OFFSETS = [(5, 3), (3, 5)]
-WORKER_OFFSETS = [(5, 4), (4, 5), (5, 5), (6, 6)]
-STRIKER_OFFSET = (6, 5)
-NEAR_VEIN = (8, 4)
-FAR_VEIN = (10, 10)
-START_CLEAR_RADIUS = 6
+# Layout of one start zone, relative to the IDEAL core anchor (the 2x2 core
+# would occupy (0,0)..(1,1)). Nothing is placed on that footprint or its ring.
+START_WORKER_OFFSETS = [(-1, 3), (0, 3), (1, 3), (2, 3)]
+START_ESCORT_OFFSET = (3, 3)
+NEAR_PODS = [(3, -1), (3, 0), (3, 1), (3, 2)]        # bankable from the ring tile (2, y)
+NEAR_VEINS = [(-2, 0), (-2, 1)]                      # bankable from the ring tile (-1, y)
+FAR_PODS = [(-3, 7), (-2, 8), (-3, 8)]
+FAR_VEINS = [(7, 7), (8, 7)]
+START_CLEAR_RADIUS = 10
+EXPANSION_POD_SHAPE = [(0, 0), (1, 0), (0, 1)]
+
+
+def start_anchor(size: int) -> tuple[int, int]:
+    """Ideal core anchor of slot 0; the other slots are symmetry transforms."""
+    return size // 4, size // 4
 
 
 def _transforms(fmt: str, size: int):
@@ -45,16 +59,18 @@ def _orbit(fmt: str, size: int, x: int, y: int) -> list[tuple[int, int]]:
     return [t(x, y) for t in _transforms(fmt, size)]
 
 
-def _anchor_of(tiles: list[tuple[int, int]]) -> tuple[int, int]:
-    return min(t[0] for t in tiles), min(t[1] for t in tiles)
-
-
 def _n_slots(fmt: str) -> int:
     return 2 if fmt == "1v1" else 4
 
 
 def _n_players(fmt: str) -> int:
     return {"1v1": 2, "ffa3": 3, "ffa4": 4}[fmt]
+
+
+def start_zones(fmt: str, size: int) -> list[tuple[int, int]]:
+    """Ideal core anchor per slot (the transform of slot 0's anchor)."""
+    ax, ay = start_anchor(size)
+    return [t(ax, ay) for t in _transforms(fmt, size)]
 
 
 def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
@@ -67,6 +83,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
     rng = PCG32(seed)
     transforms = _transforms(fmt, size)
     n_slots = _n_slots(fmt)
+    ax, ay = start_anchor(size)
 
     tiles = [["plain" for _ in range(size)] for _ in range(size)]
 
@@ -101,32 +118,46 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
                     nxt[y][x] = "blocked"
         tiles = nxt
 
-    # 3. Clear the start zones.
-    cx, cy = CORE_ANCHOR
+    # 3. Clear the start zones: the crews need room to found a city.
     for t in transforms:
-        ax, ay = t(cx, cy)
-        for y in range(max(0, ay - START_CLEAR_RADIUS), min(size, ay + START_CLEAR_RADIUS + 1)):
-            for x in range(max(0, ax - START_CLEAR_RADIUS), min(size, ax + START_CLEAR_RADIUS + 1)):
+        sx, sy = t(ax, ay)
+        for y in range(max(0, sy - START_CLEAR_RADIUS), min(size, sy + START_CLEAR_RADIUS + 1)):
+            for x in range(max(0, sx - START_CLEAR_RADIUS), min(size, sx + START_CLEAR_RADIUS + 1)):
                 tiles[y][x] = "plain"
 
     veins: dict[str, int] = {}
+    pods: dict[str, int] = {}
 
     def place_vein(x: int, y: int) -> None:
         tiles[y][x] = "vein"
         veins[tk(x, y)] = rules.VEIN_METAL
 
-    # 4. Start veins for every slot (ffa3: the empty slot keeps its veins, neutral).
-    for t in transforms:
-        for vx, vy in (NEAR_VEIN, FAR_VEIN):
-            x, y = t(vx, vy)
-            place_vein(x, y)
+    def place_pod(x: int, y: int) -> None:
+        tiles[y][x] = "pod"
+        pods[tk(x, y)] = rules.POD_ENERGY
 
-    # 5. Center veins. 1v1: 2 rolled + mirrored (4). FFA: 1 rolled per orbit (4) + 2 fixed.
-    center_lo, center_hi = size // 2 - 4, size // 2 + 3
-    rolls = 2 if fmt == "1v1" else 1
+    # 4. Start resources for every slot (ffa3: the empty slot keeps them, neutral).
+    for t in transforms:
+        for ox, oy in NEAR_PODS + FAR_PODS:
+            place_pod(*t(ax + ox, ay + oy))
+        for ox, oy in NEAR_VEINS + FAR_VEINS:
+            place_vein(*t(ax + ox, ay + oy))
+
+    def near_any_start(x: int, y: int, margin: int) -> bool:
+        for t in transforms:
+            sx, sy = t(ax, ay)
+            if max(abs(x - sx), abs(y - sy)) <= margin:
+                return True
+        return False
+
+    # 5. Center veins: a contested El Dorado in the middle of the super map.
+    #    Rolls scale with map size (96 -> 6 rolled orbits = 12 veins in 1v1).
+    band = max(4, size // 8)
+    center_lo, center_hi = size // 2 - band, size // 2 + band - 1
+    rolls = max(2, size // 16) if fmt == "1v1" else max(1, size // 24)
     placed = 0
     attempts = 0
-    while placed < rolls and attempts < 200:
+    while placed < rolls and attempts < 400:
         attempts += 1
         x = center_lo + rng.randint(center_hi - center_lo + 1)
         y = center_lo + rng.randint(center_hi - center_lo + 1)
@@ -143,23 +174,66 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
             if tiles[y][x] == "plain":
                 place_vein(x, y)
 
-    # 6. Camps: one roll, mirrored to every slot region (2 camps 1v1 / 4 FFA).
-    camp_positions: list[tuple[int, int]] = []
+    # 5b. Expansion veins scattered across the wasteland (outside the start
+    #     zones), so the long march across the map has places worth stopping.
+    expansions = size // 12
+    placed = 0
     attempts = 0
-    while not camp_positions and attempts < 200:
+    while placed < expansions and attempts < 600:
         attempts += 1
-        x = 9 + rng.randint(size // 2 - 11)
-        y = 9 + rng.randint(size // 2 - 11)
+        x = 4 + rng.randint(size - 8)
+        y = 4 + rng.randint(size - 8)
         orbit = _orbit(fmt, size, x, y)
-        ok = True
+        if len(set(orbit)) < len(orbit):
+            continue
+        if any(tiles[oy][ox] != "plain"
+               or near_any_start(ox, oy, START_CLEAR_RADIUS + 2) for ox, oy in orbit):
+            continue
         for ox, oy in orbit:
-            if tiles[oy][ox] != "plain":
+            place_vein(ox, oy)
+        placed += 1
+
+    # 5c. Expansion pod clusters: wild energy out in the wasteland (the forage
+    #     and hunt you find while exploring; an expansion depot makes them pay).
+    pod_rolls = max(2, size // 24)
+    placed = 0
+    attempts = 0
+    while placed < pod_rolls and attempts < 600:
+        attempts += 1
+        x = 4 + rng.randint(size - 10)
+        y = 4 + rng.randint(size - 10)
+        cluster = [(x + dx, y + dy) for dx, dy in EXPANSION_POD_SHAPE]
+        orbits = [_orbit(fmt, size, cx, cy) for cx, cy in cluster]
+        all_tiles = [tt for orb in orbits for tt in orb]
+        if len(set(all_tiles)) < len(all_tiles):
+            continue
+        if any(tiles[oy][ox] != "plain" or near_any_start(ox, oy, START_CLEAR_RADIUS + 2)
+               for ox, oy in all_tiles):
+            continue
+        for ox, oy in all_tiles:
+            place_pod(ox, oy)
+        placed += 1
+
+    # 6. Camps, scaled with map size (96 -> 3 rolled orbits = 6 camps in 1v1),
+    #    spread out with a minimum distance between them.
+    camp_positions: list[tuple[int, int]] = []
+    camp_rolls = max(1, size // 32)
+    attempts = 0
+    while len(camp_positions) < camp_rolls * len(transforms) and attempts < 600:
+        attempts += 1
+        x = 9 + rng.randint(size - 18)
+        y = 9 + rng.randint(size - 18)
+        orbit = _orbit(fmt, size, x, y)
+        ok = len(set(orbit)) == len(orbit)
+        for ox, oy in orbit:
+            if tiles[oy][ox] != "plain" or near_any_start(ox, oy, START_CLEAR_RADIUS + 2):
                 ok = False
-            # keep a 2-tile margin around start structures
-            if max(abs(ox - cx), abs(oy - cy)) <= START_CLEAR_RADIUS - 2:
+                break
+            if any(max(abs(ox - px), abs(oy - py)) < 10 for px, py in camp_positions):
                 ok = False
-        if ok and len(set(orbit)) == len(orbit):
-            camp_positions = list(dict.fromkeys(orbit))
+                break
+        if ok:
+            camp_positions.extend(dict.fromkeys(orbit))
     if not camp_positions:  # extremely unlikely fallback, still deterministic
         camp_positions = [t(size // 2 - 6, 8) for t in transforms]
 
@@ -167,29 +241,22 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
     players = [Player(id=i, lineage=lineages[i], energy=rules.STARTING_ENERGY,
                       metal=rules.STARTING_METAL) for i in range(n_players)]
     state = State(turn=0, format=fmt, size=size, max_turns=rules.MAX_TURNS,
-                  next_entity_id=1, tiles=tiles, veins=veins, scrap={}, players=players)
+                  next_entity_id=1, tiles=tiles, veins=veins, scrap={}, players=players,
+                  pods=pods)
 
     for slot in range(n_slots):
         if slot >= n_players:
             continue  # ffa3: empty slot, resources stay neutral
         t = transforms[slot]
         player = players[slot]
-        core_tiles = [t(cx + dx, cy + dy) for dy in range(2) for dx in range(2)]
-        ax, ay = _anchor_of(core_tiles)
-        state.add_entity(Entity(id=state.new_id(), owner=slot, kind="building", type="core",
-                                x=ax, y=ay, hp=building_max_hp(player, "core")))
-        for ox, oy in COCOON_OFFSETS:
-            x, y = t(ox, oy)
-            state.add_entity(Entity(id=state.new_id(), owner=slot, kind="building",
-                                    type="cocoon", x=x, y=y,
-                                    hp=building_max_hp(player, "cocoon")))
-        for ox, oy in WORKER_OFFSETS:
-            x, y = t(ox, oy)
+        for ox, oy in START_WORKER_OFFSETS[:rules.START_WORKERS]:
+            x, y = t(ax + ox, ay + oy)
             state.add_entity(Entity(id=state.new_id(), owner=slot, kind="unit", type="worker",
                                     x=x, y=y, hp=unit_max_hp(player, "worker")))
-        x, y = t(*STRIKER_OFFSET)
-        state.add_entity(Entity(id=state.new_id(), owner=slot, kind="unit", type="striker",
-                                x=x, y=y, hp=unit_max_hp(player, "striker")))
+        for _ in range(rules.START_ESCORTS):
+            x, y = t(ax + START_ESCORT_OFFSET[0], ay + START_ESCORT_OFFSET[1])
+            state.add_entity(Entity(id=state.new_id(), owner=slot, kind="unit", type="striker",
+                                    x=x, y=y, hp=unit_max_hp(player, "striker")))
 
     for camp_x, camp_y in sorted(camp_positions):
         camp = state.add_entity(Entity(id=state.new_id(), owner=-1, kind="building",
@@ -208,39 +275,28 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
                                     camp_home=[camp.x, camp.y]))
             guards += 1
 
-    # 8. Connectivity: every core must reach player 0's core over plain tiles.
-    _ensure_connectivity(state)
+    # 8. Connectivity: every start zone must reach slot 0's over plain tiles.
+    _ensure_connectivity(state, [t(ax, ay) for t in transforms][:n_players])
 
     update_fog(state)
     return state
 
 
-def _ensure_connectivity(state: State) -> None:
+def _ensure_connectivity(state: State, starts: list[tuple[int, int]]) -> None:
     occ = state.occupancy()
 
     def passable(x: int, y: int) -> bool:
         return state.tiles[y][x] == "plain" and (x, y) not in occ
 
-    cores = [e for e in state.entities_sorted() if e.type == "core"]
-    if len(cores) < 2:
+    if len(starts) < 2:
         return
-
-    def adjacent_open(core: Entity) -> tuple[int, int] | None:
-        for fx, fy in core.footprint():
-            for dx, dy in ((0, -1), (1, 0), (0, 1), (-1, 0)):
-                x, y = fx + dx, fy + dy
-                if state.in_bounds(x, y) and passable(x, y):
-                    return x, y
-        return None
-
-    start = adjacent_open(cores[0])
-    if start is None:
+    first = starts[0]
+    if not passable(*first):
         return
-    for core in cores[1:]:
-        goal = adjacent_open(core)
-        if goal is None or _reachable(state, occ, start, goal):
+    for goal in starts[1:]:
+        if not passable(*goal) or _reachable(state, occ, first, goal):
             continue
-        _carve_line(state, occ, start, goal)
+        _carve_line(state, occ, first, goal)
 
 
 def _reachable(state: State, occ: dict, start: tuple[int, int], goal: tuple[int, int]) -> bool:
@@ -276,4 +332,6 @@ def _carve_line(state: State, occ: dict, a: tuple[int, int], b: tuple[int, int])
             continue
         if state.tiles[y][x] == "vein":
             state.veins.pop(tk(x, y), None)
+        if state.tiles[y][x] == "pod":
+            state.pods.pop(tk(x, y), None)
         state.tiles[y][x] = "plain"

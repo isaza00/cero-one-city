@@ -5,6 +5,7 @@ import pathlib
 
 import pytest
 
+from cero_engine import rules
 from cero_engine.bots import BOTS
 from cero_engine.cli import play_match, verify_replay
 from cero_engine.fog import visible_tiles
@@ -34,23 +35,34 @@ def test_state_serialization_roundtrip():
 
 def test_map_symmetry_and_contents():
     state = generate_map(99, "1v1", ["forge", "swarm"])
-    # 2 start veins per slot + 4 center veins on a 1v1 map
-    assert len(state.veins) == 8
+    # Super terrain (s1.2): start veins (2/slot) + scaled center + expansion
+    # veins; every vein must have its 180-degree mirror.
+    assert len(state.veins) >= 4 * 2  # at least starts + some center pairs
+    assert len(state.veins) % 2 == 0
+    for key in state.veins:
+        x, y = map(int, key.split(","))
+        mx, my = state.size - 1 - x, state.size - 1 - y
+        assert f"{mx},{my}" in state.veins
     camps = [e for e in state.entities_sorted() if e.type == "camp"]
-    assert len(camps) == 2
-    cores = [e for e in state.entities_sorted() if e.type == "core"]
-    assert len(cores) == 2
+    assert len(camps) >= 2 and len(camps) % 2 == 0
+    # Nomad start (s2.0): nobody owns a building; each crew is 4 workers + 1 striker.
+    assert not [e for e in state.entities_sorted() if e.owner >= 0 and e.is_building]
     for p in state.players:
-        assert len(state.units_of(p.id)) == 5  # 4 workers + 1 striker
+        assert len(state.units_of(p.id)) == rules.START_WORKERS + rules.START_ESCORTS
+    # pods mirror too
+    for key in state.pods:
+        x, y = map(int, key.split(","))
+        assert f"{state.size - 1 - x},{state.size - 1 - y}" in state.pods
 
     ffa = generate_map(99, "ffa4", ["forge", "swarm", "oracle", "parasite"])
-    assert len([e for e in ffa.entities_sorted() if e.type == "camp"]) == 4
-    assert len([e for e in ffa.entities_sorted() if e.type == "core"]) == 4
+    assert len([e for e in ffa.entities_sorted() if e.type == "camp"]) % 4 == 0
+    assert len([p for p in ffa.players if state.units_of(p.id) is not None]) == 4
+    assert all(len(ffa.units_of(p.id)) == 5 for p in ffa.players)
 
     ffa3 = generate_map(99, "ffa3", ["forge", "swarm", "oracle"])
-    assert len([e for e in ffa3.entities_sorted() if e.type == "core"]) == 3
-    # the empty slot still contributes neutral start veins
-    assert len(ffa3.veins) >= 8
+    assert all(len(ffa3.units_of(p.id)) == 5 for p in ffa3.players)
+    # the empty slot still contributes neutral start veins and pods
+    assert len(ffa3.veins) >= 8 and len(ffa3.pods) >= 4 * 7
 
 
 def test_fog_observation_never_leaks():

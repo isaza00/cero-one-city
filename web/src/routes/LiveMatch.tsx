@@ -9,7 +9,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { get, post } from "../api/client";
-import type { AgentPublic, EntityOut, PlayerOut } from "../api/types";
+import type { AgentPublic, EntityOut, GameState, PlayerOut } from "../api/types";
+import ActionBox from "../components/ActionBox";
 import { Commentary } from "../components/bits";
 import {
   BuildingsIcon, ClockIcon, DamageIcon, EnergyIcon, MetalIcon, UnitsIcon,
@@ -18,10 +19,11 @@ import Minimap from "../components/Minimap";
 import LineageAvatar from "../components/LineageAvatar";
 import ScoreChart from "../components/ScoreChart";
 import {
-  BUILDING_INFO, BUILDING_MAX_HP, PLAYER_COLOR_CSS, TECH_ABBREV, UNIT_MAX_HP,
-  UNIT_POWERS, UNIT_STATS, lineageLabel,
+  BUILD_ORDER, BUILDING_INFO, BUILDING_MAX_HP, BUILDING_WORK, PLAYER_COLOR_CSS,
+  TECH_ABBREV, UNIT_MAX_HP, UNIT_POWERS, UNIT_STATS, lineageLabel,
 } from "../game/meta";
 import { buildingDataURL, tintForIndex } from "../game/dompack";
+import { PERSPECTIVE_ALL } from "../game/vision";
 import MapView, { MapController } from "../pixi/MapView";
 import { useAuth } from "../store/auth";
 import { useSpectate } from "../ws/useSpectate";
@@ -102,54 +104,180 @@ function BuildingPortrait({ type, owner, size }: {
               style={{ imageRendering: "pixelated" }} alt={type} />;
 }
 
-/** Bottom-left inspector: the clicked robot/building, its hp, stats and power. */
-function UnitCard({ entity, name, lineage }: {
-  entity: EntityOut; name: string; lineage: string;
+/** Bottom-left inspector: the clicked robot/building, its hp, stats and power
+ * - and, AoE2-style, what it is doing: a foundation shows its work and crew, a
+ * worker shows its cargo and errand. */
+function UnitCard({ entity, name, lineage, crew }: {
+  entity: EntityOut; name: string; lineage: string; crew: number;
 }) {
   const isUnit = entity.kind === "unit";
   const stats = isUnit ? UNIT_STATS[entity.type] : null;
   const info = isUnit ? UNIT_POWERS[entity.type] : BUILDING_INFO[entity.type];
+  const aoe = isUnit ? null : BUILDING_INFO[entity.type]?.aoe;
   const maxHp = isUnit ? UNIT_MAX_HP[entity.type] ?? 30
                        : BUILDING_MAX_HP[entity.type] ?? 100;
   const pct = Math.max(0, Math.min(entity.hp / maxHp, 1));
+  const total = entity.build_total ?? BUILDING_WORK[entity.type] ?? 0;
+  const left = entity.build_progress ?? 0;
+  const so = entity.standing_order;
+  const cargo = (entity.cargo_e ?? 0) + (entity.cargo_m ?? 0);
+  let errand: string | null = null;
+  if (isUnit && so) {
+    if (so.type === "gather") {
+      errand = so.phase === "return" ? "carrying a full load home"
+        : `gathering at (${so.target?.[0]},${so.target?.[1]})`;
+    } else if (so.type === "build") errand = "building";
+    else if (so.type === "repair") errand = "repairing";
+    else if (so.type === "attack_move") errand = `attack-moving to (${so.to?.[0]},${so.to?.[1]})`;
+    else if (so.type === "move") errand = `moving to (${so.to?.[0]},${so.to?.[1]})`;
+    else if (so.type === "attack") errand = "attacking";
+    else errand = so.type;
+  }
   return (
     <div className="hud-unitcard">
       {isUnit
         ? <LineageAvatar lineage={lineage} unit={entity.type} size={62} />
         : <BuildingPortrait type={entity.type} owner={entity.owner} size={62} />}
       <div className="hud-unitcard-body">
-        <strong>{info?.label ?? entity.type.replace(/_/g, " ")}</strong>
+        <strong>
+          {info?.label ?? entity.type.replace(/_/g, " ")}
+          {aoe && <span className="hud-aoe"> · {aoe}</span>}
+          {left > 0 && <span className="hud-site-tag"> under construction</span>}
+        </strong>
         <span className="hint" style={{
           color: entity.owner >= 0 ? PLAYER_COLOR_CSS[entity.owner % 4] : undefined }}>
           {name}
         </span>
-        <div className="progress hud-hp">
-          <div style={{ width: `${pct * 100}%` }} />
-        </div>
-        <span className="hint mono">{entity.hp}/{maxHp} hp
-          {stats && <>
-            {"  ·  ATK "}{stats.atk}{"  ARM "}{stats.armor}
-            {"  RNG "}{stats.range}{"  SPD "}{stats.mov}{stats.air ? "  AIR" : ""}
-          </>}
-        </span>
+        {left > 0 ? (
+          <>
+            <div className="progress hud-hp site">
+              <div style={{ width: `${total > 0 ? ((total - left) / total) * 100 : 0}%` }} />
+            </div>
+            <span className="hint mono">
+              work {total - left}/{total} · {crew} builder{crew === 1 ? "" : "s"}
+              {" · "}{entity.hp}/{maxHp} hp
+            </span>
+          </>
+        ) : (
+          <>
+            <div className="progress hud-hp">
+              <div style={{ width: `${pct * 100}%` }} />
+            </div>
+            <span className="hint mono">{entity.hp}/{maxHp} hp
+              {stats && <>
+                {"  ·  ATK "}{stats.atk}{"  ARM "}{stats.armor}
+                {"  RNG "}{stats.range}{"  SPD "}{stats.mov}{stats.air ? "  AIR" : ""}
+              </>}
+            </span>
+          </>
+        )}
+        {isUnit && (cargo > 0 || errand) && (
+          <span className="hint hud-errand">
+            {cargo > 0 && <>
+              carrying {entity.cargo_m ? <><MetalIcon /> {entity.cargo_m}</> : null}
+              {entity.cargo_e ? <> <EnergyIcon /> {entity.cargo_e}</> : null}
+              {errand ? " · " : ""}
+            </>}
+            {errand}
+          </span>
+        )}
         {info && <p className="hint hud-power">{info.power}</p>}
       </div>
     </div>
   );
 }
 
+/** Side panel: every player's city as an AoE2 build panel - what stands, what
+ * is under construction (crew + progress), and the crew's employment. This is
+ * where the agents' build decisions become visible. */
+function CityPanel({ state, names }: { state: GameState | null; names: Map<number, string> }) {
+  if (!state) return <span className="hint">waiting for the first turn…</span>;
+  return (
+    <div className="city-panel">
+      {state.players.map((pl) => {
+        const ents = Object.values(state.entities).filter((e) => e.owner === pl.id);
+        const counts = new Map<string, number>();
+        const sites: EntityOut[] = [];
+        for (const e of ents) {
+          if (e.kind !== "building") continue;
+          if (e.build_progress) sites.push(e);
+          else counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
+        }
+        const workers = ents.filter((e) => e.kind === "unit" && e.type === "worker");
+        const idle = workers.filter((w) => !w.standing_order && !w.stiff).length;
+        const builders = workers.filter((w) => w.standing_order?.type === "build").length;
+        const hauling = workers.filter((w) => (w.cargo_e ?? 0) + (w.cargo_m ?? 0) > 0).length;
+        const standing = [...counts.values()].reduce((a, b) => a + b, 0);
+        const color = PLAYER_COLOR_CSS[pl.id % 4];
+        return (
+          <div className="city-row" key={pl.id} style={{ borderLeftColor: color }}>
+            <div className="city-head">
+              <b style={{ color }}>{names.get(pl.id) ?? `P${pl.id}`}</b>
+              <span className="hint">
+                {!pl.alive ? "eliminated"
+                  : pl.founded ? `${standing} building${standing === 1 ? "" : "s"}`
+                  : "nomads · no city yet"}
+              </span>
+            </div>
+            <div className="city-buildings">
+              {BUILD_ORDER.map((t) => {
+                const n = counts.get(t) ?? 0;
+                if (!n) return null;
+                return (
+                  <span className="city-b" key={t}
+                        title={`${BUILDING_INFO[t].label} (${BUILDING_INFO[t].aoe})`}>
+                    <BuildingPortrait type={t} owner={pl.id} size={26} />
+                    <span className="city-count mono">×{n}</span>
+                  </span>
+                );
+              })}
+              {standing === 0 && sites.length === 0 && (
+                <span className="hint">— nothing built —</span>
+              )}
+            </div>
+            {sites.map((s) => {
+              const total = s.build_total ?? BUILDING_WORK[s.type] ?? 1;
+              const done = total - (s.build_progress ?? 0);
+              const crew = workers.filter((w) => w.standing_order?.type === "build"
+                && w.standing_order.target_id === s.id).length;
+              return (
+                <div className="city-site" key={s.id}
+                     title={`${BUILDING_INFO[s.type]?.label} at (${s.x},${s.y})`}>
+                  <BuildingPortrait type={s.type} owner={pl.id} size={22} />
+                  <span className="city-site-name">
+                    {BUILDING_INFO[s.type]?.label ?? s.type}
+                    {s.type === "core" && !pl.founded && <span className="hud-site-tag"> founding</span>}
+                  </span>
+                  <div className="progress city-bar"><div style={{ width: `${(done / total) * 100}%` }} /></div>
+                  <span className="mono hint">{done}/{total} · {crew}👷</span>
+                </div>
+              );
+            })}
+            <div className="city-eco hint">
+              <UnitsIcon /> {workers.length} workers · {idle} idle · {builders} building · {hauling} hauling
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Top-bar block: one player's resources + researched-tech chips (the "guns"). */
-function PlayerBlock({ pl, name, units, buildings, right }: {
+function PlayerBlock({ pl, name, units, buildings, right, isMe }: {
   pl: PlayerOut; name: string; units: number; buildings: number; right?: boolean;
+  isMe?: boolean;
 }) {
   const color = PLAYER_COLOR_CSS[pl.id % 4];
   return (
-    <div className={`hud-block ${right ? "right" : ""}`}
+    <div className={`hud-block ${right ? "right" : ""}${isMe ? " mine" : ""}`}
          style={{ borderColor: color,
-                  background: `linear-gradient(180deg, ${color}24, rgba(8,11,18,0.86) 60%)` }}>
+                  background: `linear-gradient(180deg, ${color}24, rgba(8,11,18,0.86) 60%)`,
+                  boxShadow: isMe ? `0 0 0 1px ${color}, 0 0 14px ${color}66` : undefined }}>
       <div className="hud-res-row">
         <span className="hud-swatch" style={{ background: color }} />
         <span className="hud-name" style={{ color }}>{name}</span>
+        {isMe && <span className="hud-you">YOU</span>}
         {!pl.alive && <span className="hud-dead">OUT</span>}
         <span className="hud-res energy" title="energy"><EnergyIcon />{pl.energy}</span>
         <span className="hud-res metal" title="metal"><MetalIcon />{pl.metal}</span>
@@ -184,6 +312,10 @@ export default function LiveMatch() {
   const controller = useRef<MapController | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // Fog perspective: undefined = auto (your agent's eyes when seated, else
+  // the union of what the players discovered); a player index = that player's
+  // fog; PERSPECTIVE_ALL = union; null = god view (everything).
+  const [viewAs, setViewAs] = useState<number | null | undefined>(undefined);
 
   useEffect(() => {
     if (user) get<{ agents: AgentPublic[] }>("/api/agents")
@@ -199,6 +331,10 @@ export default function LiveMatch() {
     const mine = new Set(myAgents.map((a) => a.id));
     return data.players.find((p) => mine.has(p.agent_id)) ?? null;
   }, [myAgents, data.players]);
+
+  // Resolved fog perspective for both the main map and the minimap.
+  const perspective = viewAs !== undefined ? viewAs
+    : myPlayer?.player_index ?? PERSPECTIVE_ALL;
 
   const names = useMemo(() =>
     new Map(data.players.map((p) => [p.player_index, p.name])), [data.players]);
@@ -223,6 +359,19 @@ export default function LiveMatch() {
     setScoreHist([...histRef.current.entries()]
       .sort((a, b) => a[0] - b[0]).map(([, r]) => r));
   }, [data.turn, data.scoreboard]);
+
+  // Every new batch of agent orders flashes on the map: rings on the
+  // commanded units, a reticle on the target.
+  const flashedTurn = useRef(-1);
+  useEffect(() => {
+    if (data.turn <= 0 || flashedTurn.current === data.turn) return;
+    const fresh = data.feed.filter((l) =>
+      l.kind === "orders" && l.turn === data.turn && l.viz?.length
+      && l.player_index != null);
+    if (fresh.length === 0) return;
+    flashedTurn.current = data.turn;
+    for (const l of fresh) controller.current?.flashOrder(l.player_index!, l.viz!);
+  }, [data.feed, data.turn]);
 
   // Selection: resolve the picked entity from the freshest state; if it died,
   // drop the selection (and its ring).
@@ -269,6 +418,7 @@ export default function LiveMatch() {
 
         <div className="hud-topbar">
           {p0 && <PlayerBlock pl={p0} name={names.get(p0.id) ?? "P0"}
+                              isMe={myPlayer?.player_index === p0.id}
                               units={counts.get(p0.id)?.units ?? 0}
                               buildings={counts.get(p0.id)?.buildings ?? 0} />}
           <div className={`hud-plate ${players.length > 2 ? "inline" : ""}`}>
@@ -276,6 +426,7 @@ export default function LiveMatch() {
               <div className="plate-side">
                 <span className="plate-name" style={{ color: PLAYER_COLOR_CSS[0] }}>
                   {names.get(0) ?? "P0"}
+                  {myPlayer?.player_index === 0 && <span className="hud-you">YOU</span>}
                 </span>
                 <span className="plate-lineage">{lineageLabel(lineages.get(0) ?? "")}</span>
               </div>
@@ -299,16 +450,19 @@ export default function LiveMatch() {
               <div className="plate-side right">
                 <span className="plate-name" style={{ color: PLAYER_COLOR_CSS[1] }}>
                   {names.get(1) ?? "P1"}
+                  {myPlayer?.player_index === 1 && <span className="hud-you">YOU</span>}
                 </span>
                 <span className="plate-lineage">{lineageLabel(lineages.get(1) ?? "")}</span>
               </div>
             )}
           </div>
           {p1 && <PlayerBlock pl={p1} name={names.get(p1.id) ?? "P1"} right
+                              isMe={myPlayer?.player_index === p1.id}
                               units={counts.get(p1.id)?.units ?? 0}
                               buildings={counts.get(p1.id)?.buildings ?? 0} />}
           {extra.map((pl) => (
             <PlayerBlock key={pl.id} pl={pl} name={names.get(pl.id) ?? `P${pl.id}`}
+                         isMe={myPlayer?.player_index === pl.id}
                          units={counts.get(pl.id)?.units ?? 0}
                          buildings={counts.get(pl.id)?.buildings ?? 0} />
           ))}
@@ -316,24 +470,48 @@ export default function LiveMatch() {
 
         {bannerText && <div className="match-banner">{bannerText}</div>}
 
+        {/* Fog: what the agents have DISCOVERED is what you see. Default is
+            your agent's eyes when seated, else the union of all players. */}
         <MapView state={data.state} fill controller={controller}
+                 perspective={perspective}
                  onSelect={setSelectedId} />
+
+        <div className="fog-select">
+          <span className="hint">fog</span>
+          <button className={perspective === PERSPECTIVE_ALL ? "on" : ""}
+                  onClick={() => setViewAs(PERSPECTIVE_ALL)}>all</button>
+          {players.map((pl) => (
+            <button key={pl.id}
+                    className={perspective === pl.id ? "on" : ""}
+                    style={{ color: PLAYER_COLOR_CSS[pl.id % 4] }}
+                    onClick={() => setViewAs(pl.id)}>
+              {names.get(pl.id) ?? `P${pl.id}`}
+            </button>
+          ))}
+          <button className={perspective === null ? "on" : ""}
+                  onClick={() => setViewAs(null)}>god</button>
+        </div>
 
         <div className="hud-bottombar">
           <div className="bottom-left">
             {selected ? (
               <UnitCard entity={selected} lineage={selLineage}
+                        crew={Object.values(data.state?.entities ?? {}).filter((u) =>
+                          u.kind === "unit" && u.type === "worker"
+                          && u.standing_order?.type === "build"
+                          && u.standing_order.target_id === selected.id).length}
                         name={selected.owner >= 0
                           ? names.get(selected.owner) ?? `P${selected.owner}`
                           : "the wasteland"} />
             ) : (
               <span className="hud-hint hint">
-                click a robot to inspect it · drag the map or use the minimap to move
+                click a robot to inspect it · wheel to zoom · minimap to move
               </span>
             )}
           </div>
           <div className="bottom-center">
-            <Minimap state={data.state} controller={controller} />
+            <Minimap state={data.state} controller={controller}
+                     perspective={perspective} />
           </div>
           <div className="bottom-right">
             <table className="hud-stats-table">
@@ -371,6 +549,14 @@ export default function LiveMatch() {
             <ScoreChart series={scoreHist} names={names} height={110} />
           </div>
         )}
+        <div className="side-section">
+          <h3>Cities <span className="hint">what each agent has built</span></h3>
+          <CityPanel state={data.state} names={names} />
+        </div>
+        <div className="side-section">
+          <h3>Actions</h3>
+          <ActionBox lines={data.feed} names={names} lineages={lineages} />
+        </div>
         {myPlayer ? (
           <AgentChat matchId={matchId!} agentId={myPlayer.agent_id}
                      agentName={myPlayer.name} turn={data.turn}
@@ -380,7 +566,7 @@ export default function LiveMatch() {
             <h3>Agent chat</h3>
             <p className="hint">
               {user
-                ? "You're spectating - none of your agents is in this match. When one of yours fights, you can talk to it right here."
+                ? "You're spectating - none of your agents is in this match. When one of yours fights (hosted or remote), this becomes a live chat: your instructions are delivered inside its next observation."
                 : "Log in and send your own agent into battle to chat with it here."}
             </p>
           </div>

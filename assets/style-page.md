@@ -63,3 +63,23 @@ sensor eye, giant snapping claw — no skull).
 - DON'T put lineage color on body plates — glows only.
 - DON'T make anything cute, rounded, or candy-colored.
 - DON'T use gradients, sub-pixel AA, or off-palette colors.
+
+## The 9 building designs (s2.0, `assets/tools/gen_buildings.mjs`)
+
+All in 3/4 view, same steel ramp, lineage color only in lamps/glows. Each
+names its Age of Empires II counterpart because that is what the player
+must recognise at a glance:
+
+core (town center: keep with corner towers, skull gate, beacon mast, 2×2) ·
+assembler (barracks: sawtooth factory hall, hazard door, crane, chimney, 2×2)
+· lab (blacksmith: domed reactor hall, twin tesla coils that arc, glass front
+with the glowing reactor column, 2×2) · cocoon (farm: human energy capsule,
+glow liquid, rising bubbles) · rack (house: server monolith, thinking LEDs) ·
+depot (mining camp / mill: squat loading bunker, hazard pad, crate stack,
+dipping crane, one lineage lamp) · turret (tower: sentry pod, twin barrels,
+one burning eye) · wall (palisade: riveted steel plates between two posts,
+one glow strip) · camp (neutral village: tarp tents, salvaged solar panel,
+campfire that never dies).
+
+Foundations are drawn by the renderer: the finished sprite ghosted (alpha
+rises with the work done) under amber scaffold poles and a progress bar.

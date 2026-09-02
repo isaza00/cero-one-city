@@ -501,8 +501,70 @@ tr:hover td { background: rgba(255, 255, 255, 0.03); }
 }
 .bottom-right { flex: 1; display: flex; justify-content: flex-end; min-width: 0; }
 .minimap { cursor: crosshair; image-rendering: pixelated; }
+.fog-select {
+  position: absolute; top: 118px; right: 14px; z-index: 6;
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(8, 11, 18, 0.82); border: 1px solid var(--border-strong);
+  border-radius: 999px; padding: 4px 8px;
+}
+.fog-select button {
+  background: transparent; border: 1px solid transparent; border-radius: 999px;
+  color: var(--muted); font-size: 11.5px; padding: 2px 9px; cursor: pointer;
+}
+.fog-select button.on {
+  border-color: var(--border-strong); background: rgba(255, 255, 255, 0.07);
+  color: #d7dde8;
+}
+.hud-you {
+  margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+  background: var(--accent, #23d4e8); color: #04121a; vertical-align: 2px;
+}
 
 .hud-hint { align-self: center; background: rgba(8, 11, 18, 0.7); border-radius: 999px; padding: 6px 14px; }
+
+/* Action box: the agents' commands drawn as portraits -> action -> target.
+   Scrollable command log; every row the same height; newest pinned at the
+   bottom unless the viewer scrolls up. */
+.actionbox {
+  display: flex; flex-direction: column; gap: 5px;
+  width: 100%; height: 320px; overflow-y: auto;
+  background: rgba(8, 11, 18, 0.82); border: 1px solid var(--border-strong);
+  border-radius: 10px; padding: 7px;
+  scrollbar-width: thin; scrollbar-color: #2a3648 transparent;
+}
+.abx-row {
+  display: flex; align-items: center; gap: 11px; flex: none;
+  height: 54px; overflow: hidden; white-space: nowrap;
+  background: rgba(16, 22, 31, 0.9); border-left: 3px solid;
+  border-radius: 8px; padding: 0 12px;
+}
+.abx-who { display: inline-flex; flex-direction: column; line-height: 1.2;
+           font-size: 12.5px; width: 74px; flex: none; overflow: hidden; }
+.abx-turn { color: var(--muted); font-size: 10.5px; }
+.abx-actor { position: relative; display: inline-flex; }
+.abx-count {
+  position: absolute; right: -6px; bottom: -4px; font-size: 11px; font-weight: 800;
+  background: #0b0f14; border: 1px solid var(--border-strong); border-radius: 999px;
+  padding: 0 4px; color: #d7dde8; z-index: 1;
+}
+.abx-portrait {
+  display: inline-flex; width: 44px; height: 44px; flex: none;
+  align-items: center; justify-content: center;
+  background: #0b0f14; border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+}
+.abx-verb {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 58px; flex: none; font-size: 10px; color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.abx-chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px;
+  color: var(--text, #d7dde8); background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-strong); border-radius: 7px; padding: 5px 9px;
+  flex: none;
+}
 
 .hud-unitcard {
   display: flex; gap: 12px; align-items: flex-start;
@@ -546,7 +608,7 @@ tr:hover td { background: rgba(255, 255, 255, 0.03); }
 @keyframes banner-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } }
 
 .match-side {
-  width: clamp(300px, 21vw, 460px); flex-shrink: 0;
+  width: clamp(360px, 26vw, 560px); flex-shrink: 0;
   display: flex; flex-direction: column;
   border-left: 1px solid var(--border);
   background: rgba(10, 14, 22, 0.85);
@@ -670,3 +732,38 @@ tr:hover td { background: rgba(255, 255, 255, 0.03); }
   .hero-side { display: none; }
   .hero-content { padding-top: 5vh; }
 }
+
+/* ---- s2.0: the city panel (AoE2 build panel) and site/cargo cards ---- */
+.hud-aoe { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+.hud-site-tag {
+  color: var(--amber); font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hud-hp.site > div { background: linear-gradient(90deg, #ffb020, #ffd27a); }
+.hud-errand { display: inline-flex; align-items: center; gap: 4px; }
+.hud-errand svg { width: 11px; height: 11px; }
+.city-panel { display: flex; flex-direction: column; gap: 8px; }
+.city-row {
+  border-left: 3px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 0 8px 8px 0;
+  padding: 6px 8px 6px 10px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.city-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.city-head b { font-size: 13px; }
+.city-head .hint { font-size: 11.5px; }
+.city-buildings { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; min-height: 26px; }
+.city-b { display: inline-flex; align-items: center; gap: 3px; }
+.city-b img { image-rendering: pixelated; display: block; }
+.city-count { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.city-site {
+  display: grid; grid-template-columns: 22px minmax(70px, 1fr) 90px auto;
+  align-items: center; gap: 7px; font-size: 12px;
+}
+.city-site img { image-rendering: pixelated; display: block; }
+.city-site-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.city-bar { height: 6px; }
+.city-bar > div { background: linear-gradient(90deg, #ffb020, #ffd27a); }
+.city-eco { display: flex; align-items: center; gap: 5px; font-size: 11.5px; }
+.city-eco svg { width: 11px; height: 11px; opacity: 0.8; }

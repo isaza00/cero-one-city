@@ -100,11 +100,19 @@ export interface EntityOut {
   y: number;
   hp: number;
   stiff?: boolean;
+  /** Construction work points still needed (>0 = foundation under construction). */
   build_progress?: number;
+  /** Total work points of the site (progress = 1 - build_progress / build_total). */
+  build_total?: number;
+  /** Workers: cargo carried toward a drop-off (core or depot). */
+  cargo_e?: number;
+  cargo_m?: number;
+  /** Producers: where freshly trained units walk to. */
+  rally?: number[] | null;
   accumulator?: number;
   capture?: { by: number; counter: number };
   standing_order?: { type: string; to?: number[]; target?: number[];
-                     target_id?: number } | null;
+                     target_id?: number; phase?: string } | null;
 }
 
 /** One engine event of a resolved turn (attack/unit_killed/built/...). */
@@ -121,6 +129,8 @@ export interface PlayerOut {
   techs: string[];
   firmware: string;
   alive: boolean;
+  /** True once the first core stands (nomad start: nobody owns buildings at turn 0). */
+  founded?: boolean;
   eliminated_turn: number | null;
   damage_dealt: number;
   explored: number[];
@@ -131,8 +141,11 @@ export interface GameState {
   format: string;
   size: number;
   max_turns: number;
+  /** tiles[y][x] in plain | blocked | vein | pod | rubble */
   tiles: string[][];
   veins: Record<string, number>;
+  /** Wild pods (dormant humans in capsules): the energy you FIND, finite. */
+  pods?: Record<string, number>;
   scrap: Record<string, { e: number; m: number }>;
   players: PlayerOut[];
   entities: Record<string, EntityOut>;
@@ -141,12 +154,33 @@ export interface GameState {
   winner: number | null;
 }
 
+export interface OrderVizTarget {
+  kind: "tile" | "unit" | "building" | "terrain" | "tech" | "diplomacy";
+  type?: string | null;
+  owner?: number | null;
+  id?: number;
+  x?: number;
+  y?: number;
+  terrain?: string;
+  res?: string;
+  label?: string;
+}
+
+/** One visualized order group: who was commanded, to do what, to whom. */
+export interface OrderViz {
+  action: string;
+  actors: [string, number][];
+  actor_ids: number[];
+  target: OrderVizTarget | null;
+}
+
 export interface FeedLine {
   agent_id: string | null;
   player_index: number | null;
   text: string;
   kind?: string;
   turn?: number;
+  viz?: OrderViz[];
 }
 
 export interface ScoreboardRow {

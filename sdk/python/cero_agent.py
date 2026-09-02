@@ -24,51 +24,106 @@ import websockets
 
 
 class ExampleBot:
-    """A tiny greedy baseline: eco up, build strikers, attack what it sees."""
+    """A tiny Age-of-Empires baseline: found the city, farm and mine, train
+    workers, build an assembler, stream strikers, attack what it sees."""
 
     def act(self, obs: dict) -> list[dict]:
         orders: list[dict] = []
         res = obs["resources"]
         units = obs["units"]
         buildings = obs["buildings"]
+        menus = obs["menus"]
         my_workers = [u for u in units if u["type"] == "worker"]
-        idle_workers = [u for u in my_workers if not u.get("standing_order")]
-        cocoons = [b for b in buildings if b["type"] == "cocoon"
-                   and not b.get("building_turns_left")]
-        veins = [t for t in obs["visible_map"]["notable_tiles"]
-                 if t.get("terrain") == "vein"]
-        enemies = [e for e in obs["enemies_visible"] if "id" in e]
+        finished = [b for b in buildings if not b.get("under_construction")]
+        sites = [b for b in buildings if b.get("under_construction")]
+        cores = [b for b in finished if b["type"] == "core"]
 
-        # Workers: half on energy, half on metal.
-        for i, w in enumerate(idle_workers):
-            if i % 2 == 0 and cocoons:
-                c = cocoons[i // 2 % len(cocoons)]
-                orders.append({"type": "gather", "actor_id": w["id"],
-                               "target": [c["x"], c["y"]]})
-            elif veins:
-                v = min(veins, key=lambda t: abs(t["x"] - w["x"]) + abs(t["y"] - w["y"]))
-                orders.append({"type": "gather", "actor_id": w["id"],
-                               "target": [v["x"], v["y"]]})
+        # 1. Nomad start: every worker founds the core at the engine's suggestion.
+        if not cores:
+            site = next((s for s in sites if s["type"] == "core"), None)
+            core_menu = next(m for m in menus["build"] if m["building"] == "core")
+            for w in my_workers:
+                if site is not None:
+                    orders.append({"type": "build", "actor_id": w["id"],
+                                   "target_id": site["id"]})
+                elif core_menu["available"] and core_menu.get("suggested_anchor"):
+                    orders.append({"type": "build", "actor_id": w["id"],
+                                   "building": "core",
+                                   "anchor": core_menu["suggested_anchor"]})
+            return orders
 
-        # Core: keep making workers up to 7.
-        core = next((b for b in buildings if b["type"] == "core"
-                     and not b.get("producing") and not b.get("researching")), None)
-        if core and len(my_workers) < 7 and res["energy"] >= 25:
+        # 2. Idle workers: alternate energy (pods, then cocoons) and metal (veins).
+        pods = [t for t in obs["visible_map"]["notable_tiles"] if t.get("terrain") == "pod"]
+        veins = [t for t in obs["visible_map"]["notable_tiles"] if t.get("terrain") == "vein"]
+        cocoons = [b for b in finished if b["type"] == "cocoon"]
+        energy_tiles = pods + cocoons
+        for i, wid in enumerate(obs["economy"]["idle_workers"]):
+            w = next(u for u in units if u["id"] == wid)
+            pool = energy_tiles if (i % 2 == 0 and energy_tiles) else veins
+            if not pool:
+                continue
+            t = min(pool, key=lambda t: max(abs(t["x"] - w["x"]), abs(t["y"] - w["y"])))
+            orders.append({"type": "gather", "actor_id": wid, "target": [t["x"], t["y"]]})
+
+        # 3. Core: workers up to 12 (the menu says whether it is affordable).
+        core = next((b for b in cores if not b.get("producing") and not b.get("researching")),
+                    None)
+        worker_menu = next(m for m in menus["units"] if m["unit"] == "worker")
+        if core and len(my_workers) < 12 and worker_menu["available"] \
+                and res["energy"] - res["upkeep_next"] >= 30:
             orders.append({"type": "produce", "actor_id": core["id"], "unit": "worker"})
 
-        # First assembler, then strikers forever.
-        assembler = next((b for b in buildings if b["type"] == "assembler"
-                          and not b.get("building_turns_left")), None)
-        if assembler is None and res["metal"] >= 80 and my_workers:
-            w = my_workers[0]
-            orders.append({"type": "build", "actor_id": w["id"],
-                           "building": "assembler", "anchor": [w["x"] + 1, w["y"] + 1]})
-        elif assembler is not None and not assembler.get("producing") \
-                and res["energy"] >= 20 and res["metal"] >= 15:
+        # 4. Buildings, one site at a time: rack when compute is short, cocoons
+        #    hugging the core when the pods are gone, then the assembler.
+        def can_build(name: str) -> bool:
+            return next(m for m in menus["build"] if m["building"] == name)["available"]
+
+        def free_anchor(w: int, near: dict) -> list[int] | None:
+            taken = {(t["x"], t["y"]) for t in obs["visible_map"]["notable_tiles"]}
+            for b in buildings:
+                bw = 2 if b["type"] in ("core", "assembler", "lab") else 1
+                for dx in range(-1, bw + 1):
+                    for dy in range(-1, bw + 1):
+                        taken.add((b["x"] + dx, b["y"] + dy))
+            for u in units:
+                taken.add((u["x"], u["y"]))
+            for r in range(2, 9):
+                for dx in range(-r, r + 1):
+                    for dy in range(-r, r + 1):
+                        ax, ay = near["x"] + dx, near["y"] + dy
+                        tiles = [(ax + i, ay + j) for i in range(w) for j in range(w)]
+                        if all(t not in taken and min(t) > 0 for t in tiles):
+                            return [ax, ay]
+            return None
+
+        assembler = next((b for b in finished if b["type"] == "assembler"), None)
+        if not sites and my_workers:
+            builder = my_workers[-1]
+            if res["compute_cap"] - res["compute_used"] < 2 and can_build("rack"):
+                anchor = free_anchor(1, cores[0])
+                if anchor:
+                    orders.append({"type": "build", "actor_id": builder["id"],
+                                   "building": "rack", "anchor": anchor})
+            elif not pods and len(cocoons) < 4 and can_build("cocoon"):
+                anchor = free_anchor(1, cores[0])
+                if anchor:
+                    orders.append({"type": "build", "actor_id": builder["id"],
+                                   "building": "cocoon", "anchor": anchor})
+            elif assembler is None and can_build("assembler"):
+                anchor = free_anchor(2, cores[0])
+                if anchor:
+                    orders.append({"type": "build", "actor_id": builder["id"],
+                                   "building": "assembler", "anchor": anchor})
+
+        # 5. Strikers forever.
+        striker_menu = next(m for m in menus["units"] if m["unit"] == "striker")
+        if assembler is not None and not assembler.get("producing") \
+                and striker_menu["available"]:
             orders.append({"type": "produce", "actor_id": assembler["id"],
                            "unit": "striker"})
 
         # Army: attack the nearest visible enemy, or push toward the far corner.
+        enemies = [e for e in obs["enemies_visible"] if "id" in e]
         army = [u for u in units if u["type"] not in ("worker", "watcher")]
         size = obs["visible_map"]["size"]
         for u in army:

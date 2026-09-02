@@ -29,3 +29,25 @@ export function visibleTiles(state: GameState, playerIndex: number): Set<number>
 export function exploredTiles(state: GameState, playerIndex: number): Set<number> {
   return new Set(state.players[playerIndex]?.explored ?? []);
 }
+
+/** Sentinel perspective: the UNION of every player's fog (spectator default -
+ * you see what the agents have discovered, never more). */
+export const PERSPECTIVE_ALL = -2;
+
+export function visibleTilesFor(state: GameState, perspective: number): Set<number> {
+  if (perspective !== PERSPECTIVE_ALL) return visibleTiles(state, perspective);
+  const out = new Set<number>();
+  for (const p of state.players) {
+    for (const t of visibleTiles(state, p.id)) out.add(t);
+  }
+  return out;
+}
+
+export function exploredTilesFor(state: GameState, perspective: number): Set<number> {
+  if (perspective !== PERSPECTIVE_ALL) return exploredTiles(state, perspective);
+  const out = new Set<number>();
+  for (const p of state.players) {
+    for (const t of p.explored ?? []) out.add(t);
+  }
+  return out;
+}

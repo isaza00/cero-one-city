@@ -12,6 +12,19 @@ from cero_engine.state import State
 def closing_phase(state: State, ctx) -> None:
     _resolve_recruits(state, ctx)
 
+    # Elimination (the AoE2 rule adapted to the nomad start): a player who has
+    # founded a city dies with its LAST core; a crew that never founded one dies
+    # when it has neither a core site nor a worker left to build one.
+    for player in state.players:
+        if not player.alive or player.id in ctx.eliminated_now:
+            continue
+        cores = [b for b in state.buildings_of(player.id) if b.type == "core"]
+        workers = [u for u in state.units_of(player.id) if u.type == "worker"]
+        if player.founded and not cores:
+            ctx.eliminated_now[player.id] = "core"
+        elif not player.founded and not cores and not workers:
+            ctx.eliminated_now[player.id] = "core"
+
     for pid in ctx.forfeits:
         if state.players[pid].alive:
             ctx.eliminated_now.setdefault(pid, "abandon")

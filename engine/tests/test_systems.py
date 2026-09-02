@@ -108,24 +108,25 @@ def test_upkeep_blackout_makes_units_stiff():
 
 
 def test_harvest_mine_and_vein_depletion():
+    # Core at (0,0)-(1,1): a vein at (3,3) and a cocoon at (2,3) are within reach
+    # of ring tiles, so workers standing between them bank on the spot.
     state = with_cores(blank_state())
-    state.tiles[5][5] = "vein"
-    state.veins["5,5"] = 10
-    w1 = add(state, 0, "unit", "worker", 6, 5)
-    add(state, 0, "building", "cocoon", 2, 2)
-    w2 = add(state, 0, "unit", "worker", 3, 2)
+    state.tiles[3][3] = "vein"
+    state.veins["3,3"] = 10
+    w1 = add(state, 0, "unit", "worker", 2, 2)
+    add(state, 0, "building", "cocoon", 3, 0)
+    w2 = add(state, 0, "unit", "worker", 2, 1)
     e0, m0 = state.players[0].energy, state.players[0].metal
     turn(state, {0: [
-        {"actor_id": w1.id, "type": "gather", "target": [5, 5]},
-        {"actor_id": w2.id, "type": "gather", "target": [2, 2]},
+        {"actor_id": w1.id, "type": "gather", "target": [3, 3]},
+        {"actor_id": w2.id, "type": "gather", "target": [3, 0]},
     ]})
     p = state.players[0]
-    upkeep = 2 * rules.UPKEEP_PER_UNIT
     assert p.metal == m0 + 6
-    assert p.energy == e0 + rules.HARVEST_ENERGY - upkeep
+    assert p.energy == e0 + rules.HARVEST_ENERGY  # workers pay no upkeep
     turn(state)  # mines the remaining 4, vein depletes
-    assert "5,5" not in state.veins
-    assert state.tiles[5][5] == "plain"
+    assert "3,3" not in state.veins
+    assert state.tiles[3][3] == "plain"
 
 
 def test_repair_costs_metal():

@@ -60,8 +60,10 @@ async def test_practice_match_runs_to_completion(user_client, app):
     from app.settings import get_settings
     real = aioredis.from_url(get_settings().redis_url)
     try:
+        # s1.2 super-terrain matches run 80 turns on 96x96 states: give the
+        # full match room to persist every turn.
         await asyncio.wait_for(run_match({"redis": FakeArqRedis(real)}, match_id),
-                               timeout=120)
+                               timeout=420)
     finally:
         await real.aclose()
 

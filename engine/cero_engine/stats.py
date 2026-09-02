@@ -33,6 +33,11 @@ def building_cost(player: Player, btype: str) -> tuple[int, int]:
     return e, m
 
 
+def tech_cost(player: Player, tech: str) -> tuple[int, int]:
+    spec = rules.TECHS[tech]
+    return spec["cost_e"], spec["cost_m"]
+
+
 def unit_max_hp(player: Player, utype: str) -> int:
     hp = rules.UNITS[utype]["hp"]
     if utype == "human":  # recruited, not built: lineage modifiers do not apply
@@ -150,11 +155,36 @@ def research_turns(tech: str, free_compute: int) -> int:
     return max(turns, 1)
 
 
-def build_turns(player: Player, btype: str) -> int:
-    turns = rules.BUILDINGS[btype]["build_turns"]
+# ------------------------------------------------------------ economy / crews
+
+def carry_capacity(player: Player) -> int:
+    """How much a worker carries before walking it to a drop-off."""
     if "cargo_servos" in player.techs:
-        turns -= 1
-    return max(turns, 1)
+        return rules.CARRY_CAPACITY_SERVOS
+    return rules.CARRY_CAPACITY
+
+
+def build_rate(player: Player) -> int:
+    """Construction work points one adjacent builder adds per turn."""
+    if "cargo_servos" in player.techs:
+        return rules.BUILD_WORK_PER_WORKER_SERVOS
+    return rules.BUILD_WORK_PER_WORKER
+
+
+def building_work(btype: str) -> int:
+    return max(rules.BUILDINGS[btype]["work"], 1)
+
+
+def mine_rate(player: Player) -> int:
+    return rules.MINE_METAL_FAST if "fast_mining" in player.techs else rules.MINE_METAL
+
+
+def harvest_rate(player: Player) -> int:
+    return rules.HARVEST_ENERGY_RICH if "rich_harvest" in player.techs else rules.HARVEST_ENERGY
+
+
+def pod_rate(player: Player) -> int:
+    return rules.POD_ENERGY_RATE_RICH if "rich_harvest" in player.techs else rules.POD_ENERGY_RATE
 
 
 def compute_cap(state: State, player_id: int) -> int:

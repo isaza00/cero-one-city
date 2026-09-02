@@ -38,5 +38,7 @@ def with_cores(state: State) -> State:
         add(state, 1, "building", "core", state.size - 2, state.size - 2)
     for i in range(2, len(state.players)):
         add(state, i, "building", "core", state.size - 2, 0)
+    for p in state.players:
+        p.founded = True  # these cities exist: losing the core eliminates them
     update_fog(state)
     return state

@@ -13,7 +13,7 @@ from cero_engine.rules import BUILDINGS, UNITS
 
 
 def tk(x: int, y: int) -> str:
-    """Tile key used by dict-backed tile maps (veins, scrap, last_seen)."""
+    """Tile key used by dict-backed tile maps (veins, pods, scrap, last_seen)."""
     return f"{x},{y}"
 
 
@@ -34,11 +34,15 @@ class Entity:
     stiff: bool = False     # unpaid upkeep this turn: cannot act
     heading: str | None = None            # last move direction: N/E/S/W
     revealed_until: int = 0               # stealth units: visible through this turn
-    standing_order: dict | None = None    # persistent order (move/attack/gather/...)
+    standing_order: dict | None = None    # persistent order (move/attack/gather/build/...)
     production: dict | None = None        # {"unit": str, "turns_left": int}
     research: dict | None = None          # {"tech": str, "turns_left": int}
-    build_progress: int = 0               # >0: under construction (inactive)
-    builder_id: int | None = None         # worker bound to the construction
+    build_progress: int = 0               # >0: construction work points still needed
+    build_total: int = 0                  # total work points of the site (progress bar)
+    builder_id: int | None = None         # legacy single-builder binding (unused, kept for replays)
+    cargo_e: int = 0                      # workers: energy carried toward a drop-off
+    cargo_m: int = 0                      # workers: metal carried toward a drop-off
+    rally: list[int] | None = None        # producers: [x, y] new units walk to
     accumulator: int = 0                  # cocoons only
     capture: dict | None = None           # {"by": player, "counter": int}
     was_captured: bool = False            # racks taken by a parasite (scores +50 if held)
@@ -58,6 +62,20 @@ class Entity:
     @property
     def is_air(self) -> bool:
         return self.is_unit and bool(UNITS[self.type].get("air"))
+
+    @property
+    def is_site(self) -> bool:
+        """A building still under construction (inactive, low hp)."""
+        return self.is_building and self.build_progress > 0
+
+    @property
+    def is_dropoff(self) -> bool:
+        return (self.is_building and not self.build_progress
+                and bool(BUILDINGS[self.type].get("dropoff")))
+
+    @property
+    def cargo(self) -> int:
+        return self.cargo_e + self.cargo_m
 
     def footprint(self) -> list[tuple[int, int]]:
         if self.is_unit:
@@ -84,8 +102,16 @@ class Entity:
             d["research"] = self.research
         if self.build_progress:
             d["build_progress"] = self.build_progress
+        if self.build_total:
+            d["build_total"] = self.build_total
         if self.builder_id is not None:
             d["builder_id"] = self.builder_id
+        if self.cargo_e:
+            d["cargo_e"] = self.cargo_e
+        if self.cargo_m:
+            d["cargo_m"] = self.cargo_m
+        if self.rally is not None:
+            d["rally"] = self.rally
         if self.accumulator:
             d["accumulator"] = self.accumulator
         if self.capture is not None:
@@ -112,7 +138,11 @@ class Entity:
             production=d.get("production"),
             research=d.get("research"),
             build_progress=d.get("build_progress", 0),
+            build_total=d.get("build_total", 0),
             builder_id=d.get("builder_id"),
+            cargo_e=d.get("cargo_e", 0),
+            cargo_m=d.get("cargo_m", 0),
+            rally=list(d["rally"]) if d.get("rally") is not None else None,
             accumulator=d.get("accumulator", 0),
             capture=d.get("capture"),
             was_captured=d.get("was_captured", False),
@@ -131,6 +161,7 @@ class Player:
     techs: list[str] = field(default_factory=list)
     firmware: str = "v1"
     alive: bool = True
+    founded: bool = False                 # True once the first core stands (nomad start)
     eliminated_turn: int | None = None
     eliminated_cause: str | None = None   # "core" | "abandon"
     damage_dealt: int = 0
@@ -142,7 +173,8 @@ class Player:
         return {
             "id": self.id, "lineage": self.lineage, "energy": self.energy,
             "metal": self.metal, "techs": self.techs, "firmware": self.firmware,
-            "alive": self.alive, "eliminated_turn": self.eliminated_turn,
+            "alive": self.alive, "founded": self.founded,
+            "eliminated_turn": self.eliminated_turn,
             "eliminated_cause": self.eliminated_cause,
             "damage_dealt": self.damage_dealt, "core_kills": self.core_kills,
             "explored": self.explored, "last_seen": self.last_seen,
@@ -153,6 +185,7 @@ class Player:
         return Player(
             id=d["id"], lineage=d["lineage"], energy=d["energy"], metal=d["metal"],
             techs=list(d["techs"]), firmware=d["firmware"], alive=d["alive"],
+            founded=d.get("founded", False),
             eliminated_turn=d.get("eliminated_turn"),
             eliminated_cause=d.get("eliminated_cause"),
             damage_dealt=d.get("damage_dealt", 0), core_kills=d.get("core_kills", 0),
@@ -167,10 +200,11 @@ class State:
     size: int
     max_turns: int
     next_entity_id: int
-    tiles: list[list[str]]    # tiles[y][x] in {"plain","blocked","vein","rubble"}
+    tiles: list[list[str]]    # tiles[y][x] in {"plain","blocked","vein","pod","rubble"}
     veins: dict[str, int]     # tile key -> metal remaining
     scrap: dict[str, dict]    # tile key -> {"e": int, "m": int}
     players: list[Player]
+    pods: dict[str, int] = field(default_factory=dict)   # tile key -> energy remaining
     entities: dict[str, Entity] = field(default_factory=dict)   # str(id) -> Entity
     diplomacy: dict = field(default_factory=lambda: {
         "truces": [], "proposals": [], "joint": [], "breaks": []})
@@ -204,6 +238,10 @@ class State:
     def buildings_of(self, player: int) -> list[Entity]:
         return [e for e in self.entities_sorted() if e.is_building and e.owner == player]
 
+    def dropoffs_of(self, player: int) -> list[Entity]:
+        """Finished drop-off buildings (cores and depots) of a player."""
+        return [e for e in self.buildings_of(player) if e.is_dropoff]
+
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.size and 0 <= y < self.size
 
@@ -223,7 +261,7 @@ class State:
         return {
             "turn": self.turn, "format": self.format, "size": self.size,
             "max_turns": self.max_turns, "next_entity_id": self.next_entity_id,
-            "tiles": self.tiles, "veins": self.veins, "scrap": self.scrap,
+            "tiles": self.tiles, "veins": self.veins, "pods": self.pods, "scrap": self.scrap,
             "players": [p.to_dict() for p in self.players],
             "entities": {k: e.to_dict() for k, e in sorted(self.entities.items(), key=lambda kv: int(kv[0]))},
             "diplomacy": self.diplomacy,
@@ -238,7 +276,8 @@ class State:
             turn=d["turn"], format=d["format"], size=d["size"], max_turns=d["max_turns"],
             next_entity_id=d["next_entity_id"],
             tiles=[list(row) for row in d["tiles"]],
-            veins=dict(d["veins"]), scrap={k: dict(v) for k, v in d["scrap"].items()},
+            veins=dict(d["veins"]), pods=dict(d.get("pods", {})),
+            scrap={k: dict(v) for k, v in d["scrap"].items()},
             players=[Player.from_dict(p) for p in d["players"]],
             entities={k: Entity.from_dict(e) for k, e in d["entities"].items()},
             diplomacy={k: [dict(i) for i in v] for k, v in d["diplomacy"].items()},

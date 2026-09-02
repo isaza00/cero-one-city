@@ -1,8 +1,10 @@
-"""Turtle: defensive turrets, tech to v3, then walking towers break the siege."""
+"""Turtle: the AoE2 fast-castle-into-towers player. Found the city, a solid
+economy, turrets and walls facing the enemy, tech to v3, then walking towers
+break the game open."""
 
 from __future__ import annotations
 
-from cero_engine.bots.base import Bot
+from cero_engine.bots.base import Bot, footprint
 
 
 class TurtleBot(Bot):
@@ -11,62 +13,116 @@ class TurtleBot(Bot):
     def act(self, obs: dict) -> list[dict]:
         orders: list[dict] = []
         res = obs["resources"]
+        turn = obs["turn"]
         firmware = obs["research"]["firmware"]
-        researching = obs["research"]["in_progress"]
+        tier = self.firmware_tier(obs)
 
-        self.assign_workers(obs, orders, energy_workers=4)
+        if self.found_city(obs, orders):
+            self.scout(obs, orders)
+            return orders
 
-        core = self.free_producer(obs, "core")
         workers = len(self.units(obs, "worker"))
-        if core is not None:
-            if workers < 7 and res["energy"] >= 25 \
-                    and res["compute_cap"] - res["compute_used"] >= 1:
-                orders.append({"actor_id": core["id"], "type": "produce", "unit": "worker"})
-            elif firmware == "v1" and researching is None \
-                    and res["energy"] >= 120 and res["metal"] >= 80:
-                orders.append({"actor_id": core["id"], "type": "research", "tech": "firmware_v2"})
-            elif firmware == "v2" and researching is None \
-                    and res["energy"] >= 350 and res["metal"] >= 250 \
-                    and len(self.buildings(obs, "rack")) >= 2:
-                orders.append({"actor_id": core["id"], "type": "research", "tech": "firmware_v3"})
+        target_workers = {1: 14, 2: 18, 3: 20}[tier]
+        energy_workers = self.energy_share(obs, 45)
+        self.assign_workers(obs, orders, energy_workers)
+        self.help_sites(obs, orders)
 
-        racks = len(self.buildings(obs, "rack"))
-        if (res["compute_cap"] - res["compute_used"] < 3 or racks < 2) \
-                and res["metal"] >= 40 and racks < 6:
-            self.build_with_worker(obs, orders, "rack", 1, 1)
-        if not self.buildings(obs, "assembler") and res["metal"] >= 80:
-            self.build_with_worker(obs, orders, "assembler", 2, 2)
-        if firmware != "v1" and len(self.buildings(obs, "turret")) < 3 \
-                and res["energy"] >= 30 and res["metal"] >= 50:
-            self.build_with_worker(obs, orders, "turret", 1, 1)
-        if len(self.buildings(obs, "cocoon")) * 2 < min(workers, 6) and res["metal"] >= 25:
-            self.build_with_worker(obs, orders, "cocoon", 1, 1)
+        assemblers = self.buildings(obs, "assembler", finished=False)
+        labs = self.buildings(obs, "lab", finished=False)
+        racks = self.buildings(obs, "rack", finished=False)
+        turrets = self.buildings(obs, "turret", finished=False)
+        saving_v2 = firmware == "v1" and bool(self.buildings(obs, "assembler")) and workers >= 9
+        saving_v3 = (firmware == "v2" and turn >= 26 and len(self.buildings(obs, "rack")) >= 2
+                     and bool(self.buildings(obs, "lab")) and len(turrets) >= 2)
+        reserve = (120, 80) if saving_v2 else (350, 250) if saving_v3 else (0, 0)
 
-        assembler = self.free_producer(obs, "assembler")
-        if assembler is not None:
-            if firmware == "v3" and res["energy"] >= 60 and res["metal"] >= 80:
-                orders.append({"actor_id": assembler["id"], "type": "produce",
-                               "unit": "walking_tower"})
-            elif firmware != "v1" and res["energy"] >= 25 and res["metal"] >= 20:
-                orders.append({"actor_id": assembler["id"], "type": "produce", "unit": "launcher"})
+        if saving_v2 and self.research_at(obs, orders, "core", ["firmware_v2"]):
+            pass
+        elif saving_v3 and self.research_at(obs, orders, "core", ["firmware_v3"]):
+            pass
+        elif not self.train_workers(obs, orders, target_workers):
+            if self.lineage_unique(obs) == "watcher" and not self.units(obs, "watcher") \
+                    and self.can_afford(obs, "watcher"):
+                core = self.free_producer(obs, "core")
+                if core is not None:
+                    orders.append({"actor_id": core["id"], "type": "produce", "unit": "watcher"})
+            else:
+                techs = ["fast_mining", "rich_harvest", "cargo_servos"]
+                if tier >= 2:
+                    techs += ["reinforced_core"]
+                self.research_at(obs, orders, "core", techs, reserve)
+
+        free_compute = res["compute_cap"] - res["compute_used"]
+        if len(self.sites(obs)) < 2:
+            core = self.my_core(obs)
+            energy_slots = sum(3 for p in self.pods(obs)
+                               if p.get("pod_left", 0) >= 40
+                               and self.bank_distance(obs, p["x"], p["y"]) <= 2)
+            energy_slots += 2 * len(self.buildings(obs, "cocoon", finished=False))
+            if energy_workers > energy_slots and self.can(obs, "build", "cocoon"):
+                self.build_with_worker(obs, orders, "cocoon", hug=core)
+            elif free_compute < 3 and len(racks) < 9:
+                self.build_with_worker(obs, orders, "rack")
+            elif not assemblers and workers >= 6:
+                self.build_with_worker(obs, orders, "assembler", crew=2)
+            elif not labs and workers >= 10 and assemblers:
+                self.build_with_worker(obs, orders, "lab", crew=2)
+            elif tier >= 2 and len(turrets) < (2 if saving_v3 else 4) \
+                    and self.can(obs, "build", "turret"):
+                self.build_with_worker(obs, orders, "turret",
+                                       near=self.front_of_base(obs, 5 + len(turrets)))
+            elif tier >= 2 and len(turrets) >= 2 and self.wall_front(obs, orders):
+                pass
+            elif self.expand(obs, orders, max_depots=2 + tier):
+                pass
+
+        if not saving_v3:
+            self.research_at(obs, orders, "lab",
+                             ["armor_1", "cannons_1", "optics", "armor_2", "cannons_2",
+                              "anti_air"], reserve)
+
+        wishlist = {1: ["striker"], 2: ["launcher", "striker"],
+                    3: ["walking_tower", "drone_swarm", "launcher"]}[tier]
+        if workers >= 8:
+            self.train_army(obs, orders, wishlist, reserve)
 
         towers = self.units(obs, "walking_tower")
-        escorts = [u for u in self.units(obs) if u["type"] in ("launcher", "striker")]
-        if towers:
-            for u in towers + escorts:
-                so = u.get("standing_order") or {}
-                if so.get("type") in ("attack", "attack_move"):
-                    continue
-                self.attack_move(obs, orders, u)
-        else:
-            # Hold near the core; intercept anything that comes close.
-            core_b = self.my_core(obs)
-            threats = [e for e in self.enemies(obs) if e.get("kind") == "unit"]
-            if core_b is not None and threats:
-                near = [e for e in threats
-                        if max(abs(e["x"] - core_b["x"]), abs(e["y"] - core_b["y"])) <= 8]
-                for u in escorts:
-                    if near:
-                        orders.append({"actor_id": u["id"], "type": "attack",
-                                       "target_id": near[0]["id"]})
+        if not self.defend(obs, orders, radius=12):
+            if towers and len(self.army(obs)) >= 6:
+                self.push(obs, orders, min_army=6)
+            elif saving_v3 and self.raid_camp(obs, orders, min_army=4):
+                pass
+            else:
+                # Hold near the towers until siege arrives.
+                pass
+        self.scout(obs, orders)
         return orders
+
+    def front_of_base(self, obs: dict, dist: int) -> tuple[int, int]:
+        hx, hy = self.base_center(obs)
+        ex, ey = self.enemy_corner(obs)
+        dx = 0 if ex == hx else (1 if ex > hx else -1)
+        dy = 0 if ey == hy else (1 if ey > hy else -1)
+        return hx + dx * dist, hy + dy * dist
+
+    def wall_front(self, obs: dict, orders: list) -> bool:
+        """A short palisade line in front of the turrets (never a closed ring:
+        the crews must keep walking out)."""
+        walls = self.buildings(obs, "wall", finished=False)
+        if len(walls) >= 6 or not self.can(obs, "build", "wall"):
+            return False
+        fx, fy = self.front_of_base(obs, 8)
+        hx, hy = self.base_center(obs)
+        # The line runs perpendicular to the home->enemy direction.
+        horizontal = abs(fx - hx) < abs(fy - hy)
+        taken = self.taken_tiles(obs)
+        existing = {(w["x"], w["y"]) for w in walls}
+        for i in (0, 1, -1, 2, -2, 3):
+            x, y = (fx + i, fy) if horizontal else (fx, fy + i)
+            if (x, y) in taken or (x, y) in existing or (x, y) in self.failed_sites:
+                continue
+            # keep the line from cutting through a building footprint
+            if any((x, y) in footprint(b) for b in obs["buildings"]):
+                continue
+            return self.build_with_worker(obs, orders, "wall", anchor=(x, y))
+        return False

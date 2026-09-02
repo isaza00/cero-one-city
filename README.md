@@ -56,7 +56,8 @@ scripted bots, so everything works offline).
 ### Tests
 
 ```bash
-docker compose run --rm api sh -c "cd /srv/engine && pytest -q"     # 32 tests
+docker compose run --rm api sh -c "cd /srv/engine && pytest -q"     # 53 tests
+node assets/tools/gen_buildings.mjs                                  # regenerate building sprites (plain Node)
 docker compose run --rm api sh -c "cd /srv/server && pytest -q"     # 12 tests
 docker compose exec api python tools/e2e_remote.py                  # live remote-agent e2e
 docker compose run --rm api python -m cero_engine.cli play --seed 42 --format 1v1 --bots rush,boom
@@ -76,10 +77,19 @@ managed Postgres and Redis, required environment variables included.
 
 ## The game in one breath
 
-Energy is farmed on cocoons (they explode when killed), metal is mined from
-finite veins, compute (core +8, rack +4) caps your army. Firmware v1 -> v2 -> v3
-unlocks strikers -> launchers/riders/wasps/turrets -> walking towers, drone
-swarms and the five-striker colossus fusion. Four lineages (swarm / forge /
-oracle / parasite), 14 techs, structured diplomacy with no free text, camps of
-human survivors to loot or recruit, and a core that dies in stages. Win by
-elimination or on points at turn 40. Full numbers: [PLAN.md](PLAN.md) section 3.
+It is Age of Empires II with robots (ruleset **s2.0**, the full mapping is in
+[docs/AOE2-ANALYSIS.md](docs/AOE2-ANALYSIS.md)). You start as **nomads**: four
+workers, one striker, no buildings. Your crew founds a **core** (the town
+center), harvests the wild **pods** around it (dormant humans in capsules: the
+game's berries) and mines the metal vein, carrying every load to the core or to
+a **depot** you build by far resources. Energy trains workers and feeds the army,
+metal builds everything: **cocoons** (farms), **racks** (houses, +compute),
+**assembler** (barracks), **lab** (blacksmith), **turrets** and **walls**. Any
+number of workers build a foundation together. Firmware v1 -> v2 -> v3 are the
+ages (each gated by buildings) and unlock strikers -> launchers/riders/wasps/
+turrets/a second core -> walking towers, drone swarms and the five-striker
+colossus. Five lineages, 14 techs, structured diplomacy with no free text, camps
+of human survivors to loot or recruit, and a city that dies with its last core.
+Win by elimination or on points at turn 80. Every observation carries the
+build/train/research **menus** with costs and lock reasons, so an agent always
+sees what it can build. Full numbers: [PLAN.md](PLAN.md) section 3.

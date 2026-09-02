@@ -28,7 +28,7 @@ from app.db.models import (
 )
 from app.db.session import session_factory
 from app.game import reports
-from app.game.feed import extract_highlights, render_feed
+from app.game.feed import extract_highlights, render_feed, render_orders
 from app.game.observation import build_observation, save_memory_notes
 from app.league import levels
 from app.llm import costs
@@ -244,6 +244,10 @@ class MatchRunner:
 
             diplo_allowed = {idx: levels.diplo_actions(seat.mp.level_snapshot)
                              for idx, seat in self.seats.items()}
+            # Narrate the agents' commands BEFORE resolving: actors and targets
+            # must resolve against the state the orders were written for.
+            order_lines = render_orders(orders_by_player, self.names,
+                                        self.agent_ids, state)
             t0 = time.perf_counter()
             _, events, order_errors = advance(state, orders_by_player,
                                               diplo_allowed=diplo_allowed,
@@ -252,7 +256,7 @@ class MatchRunner:
 
             state_hash = hash_state(state)
             chain = chain_hash(chain, state_hash)
-            feed = render_feed(events, self.names, self.agent_ids)
+            feed = order_lines + render_feed(events, self.names, self.agent_ids)
             highlights = extract_highlights(state.turn, events, self.names)
             self.db.add(Turn(
                 match_id=self.match_id, turn_number=state.turn, state=state.to_dict(),

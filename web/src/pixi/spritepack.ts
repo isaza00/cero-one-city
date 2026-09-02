@@ -68,6 +68,29 @@ async function doInit(base: string): Promise<void> {
         );
       }
     }
+    // Directional atlases (same layout): n = dorsal, e = profile,
+    // se/ne = three-quarter turns. w/sw/nw are runtime mirrors of e/se/ne.
+    const DIR_FILES: [string, string][] = [
+      ["n", "back"], ["e", "dir_e"], ["se", "dir_se"], ["ne", "dir_ne"]];
+    for (const [dir, file] of DIR_FILES) {
+      try {
+        const sheet2 = await Assets.load(`${base}/atlas_${file}_${tint}.png`);
+        sheet2.source.scaleMode = "nearest";
+        for (const [unit, info] of Object.entries(manifest.units)) {
+          for (let f = 0; f < info.frames; f++) {
+            packTextures.set(
+              `${unit}:${tint}:${dir}:${f}`,
+              new Texture({
+                source: sheet2.source,
+                frame: new Rectangle(f * t, info.row * t, t, t),
+              }),
+            );
+          }
+        }
+      } catch {
+        // direction pack not shipped: front frames cover this direction
+      }
+    }
   }
 
   const bres = await fetch(`${base}/buildings.json`);
@@ -145,8 +168,9 @@ export function getUnitTexture(type: string, owner: number): Texture {
   return steelTexture();
 }
 
-/** All idle frames for a unit. */
-export function getUnitFrames(type: string, owner: number): Texture[] {
+/** All idle frames for a unit facing `dir` ("s" front, "n", "e", "se", "ne");
+ * falls back to the front frames when that direction isn't shipped. */
+export function getUnitFrames(type: string, owner: number, dir = "s"): Texture[] {
   kick();
   if (!manifest) return [steelTexture()];
   const packType = manifest.units[type] ? type : PACK_ALIAS[type] ?? type;
@@ -155,7 +179,9 @@ export function getUnitFrames(type: string, owner: number): Texture[] {
   const tint = tintFor(owner);
   const out: Texture[] = [];
   for (let f = 0; f < info.frames; f++) {
-    const tex = packTextures.get(`${packType}:${tint}:${f}`);
+    const tex = (dir !== "s"
+      ? packTextures.get(`${packType}:${tint}:${dir}:${f}`) : undefined)
+      ?? packTextures.get(`${packType}:${tint}:${f}`);
     if (tex) out.push(tex);
   }
   return out.length ? out : [steelTexture()];

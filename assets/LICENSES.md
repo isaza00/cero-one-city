@@ -17,3 +17,8 @@ Rules:
 ## Unit sprite pack v4 (`assets/sprites/`)
 - 13 units × 5 tints, 2 idle frames (walking_tower: 4), 32×32, Endesga 32.
 - Generated internally (procedural pixel art, no external assets). No license restrictions.
+
+## Building sprite pack v2 (`assets/sprites/atlas_buildings_*.png`, s2.0)
+- 9 buildings × 5 tints, 2 frames, 32×32 and 64×64 cells, Endesga 32.
+- Generated internally with `assets/tools/gen_buildings.mjs` on the
+  dependency-free `pixelcanvas.mjs` (no browser). No license restrictions.

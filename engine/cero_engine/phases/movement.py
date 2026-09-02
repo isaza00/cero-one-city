@@ -154,13 +154,18 @@ def _goal_tiles(state: State, ctx, unit: Entity, order: dict, vision_of, buildin
         in_range = {t for t in _tiles_in_range(state, target, rng) if walkable(t)}
         return (in_range, False) if in_range else None
 
-    if kind in ("gather", "repair"):
-        if kind == "gather":
+    if kind in ("gather", "repair", "build"):
+        if kind == "gather" and order.get("phase") == "return":
+            # Full load: walk to the nearest own drop-off (core/depot) and bank it.
+            target_tiles = [t for b in state.dropoffs_of(unit.owner) for t in b.footprint()]
+            if not target_tiles:
+                return None  # nowhere to bank yet (nomad crew): hold the cargo
+        elif kind == "gather":
             tx, ty = order["target"]
             target_tiles = [(tx, ty)]
         else:
             target = state.ent(order["target_id"])
-            if target is None:
+            if target is None or (kind == "build" and not target.build_progress):
                 unit.standing_order = None
                 return None
             target_tiles = target.footprint()
@@ -211,6 +216,8 @@ def _acquire_target(state: State, unit: Entity, vision: set) -> Entity | None:
             continue
         if has_truce(state, unit.owner, e.owner):
             continue
+        if e.type == "wall":
+            continue  # walls are only chewed on explicit orders (AoE2 attack-move rule)
         d = min(max(abs(fx - unit.x), abs(fy - unit.y)) for fx, fy in e.footprint())
         if d > vis:
             continue
@@ -385,8 +392,8 @@ def _bfs(state: State, building_tiles: set, unit_pos: dict, unit: Entity,
                     continue
                 if t in building_tiles and not unit.is_air and t in goals:
                     continue  # ground units cannot stand on buildings even as goals
-                if avoid_units and t in unit_pos and t not in goals:
-                    continue
+                if avoid_units and t in unit_pos:
+                    continue  # never route THROUGH a standing unit (bump-and-stop otherwise)
                 prev[t] = tile
                 if t in goals and (t not in unit_pos or unit.is_air) and t not in building_tiles:
                     found = t

@@ -1,141 +1,264 @@
-# What actually happens inside Age of Empires 2
+# Age of Empires II → Cero One City: the complete mapping
 
-A dissection of the game we are copying — not its lore, but its **machinery**:
-how the player talks to units, what units do on their own, and (crucially) how
-the screen constantly *proves* to the player that things are happening. Each
-section ends with where CERO ONE CITY stands.
+Cero One City is Age of Empires II played by AI agents, with a robot theme. This
+document is the design of record for that claim: every system of AoE2 - how a
+match starts, how the economy works, how you build, how you age up, how you
+fight, how you lose, and how the screen proves all of it - and what it is in
+Cero, with the exact numbers (`engine/cero_engine/rules.py`, ruleset **s2.0**).
+
+The rule of thumb for every decision here: **if a good AoE2 player would
+recognise the situation, keep it; if a system exists only because AoE2 is a
+real-time game with a mouse, translate it into a turn-scale order the agent
+gives once.**
 
 ---
 
-## 1. The command model: intents, not instructions
+## 0. Glossary (AoE2 word → Cero word)
 
-A player never scripts a unit's steps. The interaction is always:
+| AoE2 | Cero | Notes |
+|---|---|---|
+| Villager | worker | 25 energy, trained at the core, 1 turn |
+| Scout cavalry | the starting striker | vision 5, mov 6; the bots tour the map with it |
+| Food | energy | pods (finite, found) and cocoons (farms) |
+| Gold | metal | veins, scrap, ruins |
+| Wood / stone | metal | one building material instead of two |
+| Population | compute | core +10, rack +4 (swarm +6) |
+| Berries / sheep / deer / boar | **wild pods** (`pod` tiles) | 200 energy each, 8 per worker per turn, finite |
+| Farm | cocoon | 25 metal, 8 energy/worker/turn, 2 workers, renewable |
+| Town Center | core | 100 metal, 2x2, drop-off, trains workers, ages up |
+| House | rack | 40 metal, +4 compute |
+| Mining camp / mill / lumber camp | depot | 30 metal, drop-off point |
+| Barracks + stable + archery range | assembler | 80 metal, one factory for every combat unit |
+| Blacksmith | lab | 20 energy / 60 metal, military techs |
+| Tower | turret | v2, attack 9 range 6, anti-air |
+| Palisade wall | wall | 5 metal, 60 hp, blocks; attack-move walks around |
+| Dark → Feudal → Castle Age | firmware v1 → v2 → v3 | researched at the core with building requirements |
+| Wheelbarrow | cargo_servos | +10 carry, x2 build speed, repair 20 |
+| Relic / neutral village | human camp | loot (+80/+80) or recruit (50 energy) |
+| Trebuchet | walking_tower | range 8, full damage + bonus to buildings |
+| Knight | rider | mov 10, 55 hp |
+| Archer / skirmisher | launcher | range 4, bonus vs infantry |
+| Militia / man-at-arms | striker | the v1 unit, five fuse into a colossus at v3 |
+| Resign / all TCs razed with no villager | founded city loses its last core; a nomad crew loses its last worker | see §6 |
 
-1. **Select** — click one unit, drag a box around fifty, or press a control
-   group key (armies live on keys 1–4, the town center on H).
-2. **One short intent** — right-click is context-sensitive: on ground = move,
-   on an enemy = attack, villager on a tree = chop, on a damaged wall = repair.
-   Special intents get buttons/hotkeys: attack-move, patrol, stand ground,
-   garrison, set rally point.
-3. **Forget it** — the order *persists*. The unit executes it for minutes
-   without supervision. A villager sent to gold at minute 4 is still cycling
-   mine→carry→drop at minute 20.
+---
 
-A strong player issues ~40–60 commands per minute, and almost all of them are
-"group X, go there, do that". **The per-character work is done by the units
-themselves.**
+## 1. The start: Nomad
 
-**CERO now:** identical model. Orders are per-actor `{actor_id, type, ...}`,
-persist as standing orders, last-order-wins, `stop` cancels. The LLM/remote
-agent plays exactly like a human macro player: a handful of intents per turn.
+AoE2 (Nomad mode) drops you on the map with villagers and no buildings; the
+first minute is *find a spot, build the Town Center*. Standard AoE2 gives you
+the TC but still nothing else: no farms, no army, no houses.
 
-## 2. Unit autonomy: the built-in "little brain"
+**Cero (s2.0):** every player starts with **4 workers + 1 striker, 75 energy,
+100 metal, and no buildings at all**. The map generator (`mapgen.py`) clears a
+start zone and arranges the classic start resources around an *ideal* 2x2 site:
+a cluster of 4 wild pods two tiles east of it, a 2-tile metal vein two tiles
+west, and a second pod cluster and vein further out (the "back" resources a
+depot unlocks). Starts are symmetric (180° in 1v1, 90° in FFA) and sit at
+`size/4` from the corners, so the corners behind each base are safe expansion
+land and armies meet in ~15 turns instead of 30.
 
-What makes 200 units playable with one mouse:
+The first order of every match is therefore visible on the map: four workers
+walk to a tile and **found the city** - a core foundation rises over two turns
+(8 work points, 4 builders). The observation hands agents the engine's own
+`suggested_anchor` for the core (the free explored 2x2 whose ring touches the
+most pods and veins), the same heuristic the scripted bots use.
 
-- **Auto-engagement**: any military unit fires at enemies entering its range
-  without being asked. Stances tune it (aggressive = also pursue; defensive =
-  fight but come back; stand ground = fire but never move; passive = nothing).
-- **Attack-move** (the single most used army command): march to a point,
-  engage everything encountered, resume marching when it dies. An army sent
-  attack-move across the map *fights its own way through*.
-- **Auto-gather cycle**: villagers pathfind to the resource, work it, carry a
-  full load to the nearest drop-off, and walk back — forever. When a tree
-  falls they step to the next one on their own.
-- **Auto-repair, auto-heal, auto-fire towers/castles/town-centers.**
-- **Target acquisition rules are deterministic**: nearest first, units before
-  buildings — so fights resolve predictably and the player can reason.
+Until the core stands nobody can train, research or bank a single resource:
+a nomad crew that gathers pods fills its cargo and waits. That pressure - build
+the TC first - is the AoE2 opening, kept intact.
 
-**CERO now:** auto-engagement (nearest enemy in weapon range, units before
-buildings, workers never), `attack_move` with acquisition inside unit vision
-and resume-after-kill, gather/repair standing cycles, turret auto-fire.
-Missing: stances beyond the default, patrol, rally points.
+## 2. Resources: four numbers you can always explain
 
-## 3. Feedback: the screen must PROVE the simulation
+AoE2's economy is spatial and legible because *income is little people
+physically carrying things*. Cero keeps every piece of that model:
 
-This is where a correct simulation still *feels dead* if skipped. AoE2 spends
-enormous art budget convincing you every action is real:
+- **Energy = food.** Two sources, exactly like berries→farms:
+  - **Wild pods** (`pod` terrain): dormant humans in capsules scattered by the
+    generator - the start clusters, expansion clusters across the wasteland.
+    200 energy each, 8 per worker per turn (10 with `rich_harvest`), finite;
+    when one runs dry the worker steps to the nearest pod within 6 tiles by
+    itself (the villager-to-the-next-bush reflex). A 4-pod cluster feeds 3
+    workers for ~25 turns - about when a boomer needs farms.
+  - **Cocoons** (farms): 25 metal, 2 workers, 8/turn each, renewable. Build
+    them hugging the core so harvesting banks on the spot (AoE2 farms ring
+    the TC for the same reason).
+- **Metal = gold and wood.** Veins (300, 6/turn, 8 with `fast_mining`), scrap
+  left by dead robots (20/turn), ruins of eliminated players. Every building
+  costs metal, so metal is also wood.
+- **Compute = population.** Core +10, rack +4 (swarm +6). Not spent; a cap.
+  Free compute ≥ 5 speeds 2+ turn jobs by one turn.
+- **Upkeep:** every *combat* unit pays 1 energy per turn; unpaid units freeze
+  stiff (the brief's blackout). Workers and watchers are exempt so an empty
+  bank never deadlocks the economy - AoE2 has no upkeep at all; this is the
+  minimum that keeps "no energy, no army".
 
-| Event | What the player sees/hears |
+### 2.1 Drop-offs: the mining-camp rule
+
+AoE2 villagers gather to a carry capacity and walk their load to the nearest
+drop-off (TC, mill, mining camp). Distance to the drop-off IS the efficiency of
+a resource, which is why expansion means *building a camp by the far gold*.
+
+Cero implements the full cycle at turn scale (`phases/economy.py`):
+
+| Rule | Value |
 |---|---|
-| Ranged attack | A **projectile flies** — arrow, bolt, stone; you watch it travel and land. Misses land in the dirt. |
-| Melee attack | Lunge animation + weapon swing + impact sound each blow. |
-| Taking damage | Target flinches; **health bar** appears over it; blood/sparks flash. |
-| Unit dies | Death animation, then a **corpse persists** and decays over minutes. Battlefields stay littered. |
-| Building damaged | Progressive damage states: cracks → smoke → **flames** at low HP. |
-| Building destroyed | Collapse animation + dust cloud + **rubble that stays**. |
-| Villager works | Chopping swings, hammering, and the villager **visibly carries** the resource on their back to the drop-off. |
-| Production | Rally-point flag; units physically walk out of the building. |
-| Off-screen events | Minimap pings + attack horn sound ("your town is under attack!"). |
+| Carry capacity | 20 (30 with `cargo_servos`) |
+| Drop-offs | core, depot (finished) |
+| Banking | a loaded worker standing within 1 tile of a drop-off banks instantly |
+| Full load, no drop-off in reach | `phase: "return"`: the movement phase walks it to the nearest drop-off, it banks on arrival, walks back |
+| Camped between resource and drop-off | banks every turn (the AoE2 "camp right next to the gold" efficiency) |
+| Death | a loaded worker spills its cargo into the scrap pile |
 
-Principles: every cause has a visible effect **at the location where it
-happened**; effects are **proportional** (a trebuchet hit is not an arrow
-hit); important events also fire a **global channel** (sound + minimap) so
-you never miss them; and dead things **leave traces** (corpses, rubble) so a
-glance at any place tells its recent history.
+The renderer shows the cargo (a crate glint over the worker), the return trip,
+and a `+N` floater at the drop-off on every deposit, so a glance at a base
+explains its income. The `deposit` event exists for exactly this.
 
-**CERO now:** movement glides, walk/idle frame animation, HP bars when
-damaged, core cracks/fire stages, capture ring, a death fade. **Missing (the
-current gap): projectiles/laser fire, melee flashes, explosions scaled to the
-victim, persistent wrecks, worker gather beams/carry visuals, minimap combat
-pings.** The engine now emits per-attack events precisely so the renderer can
-draw all of this.
+## 3. Building: foundations and crews
 
-## 4. Economy: four numbers you can always explain
+AoE2 construction: click a spot, a foundation appears (wood is deducted then),
+villagers walk to it and build together; more villagers = faster; a
+foundation has little hp until finished; you can task more villagers onto an
+existing foundation later.
 
-Resources are spatial and finite: wood is *that* forest, gold is *that* mine.
-Villagers are the only source of income, so army size is a direct trade
-against economy. The player always knows *why* they have 200 gold — they can
-see the six villagers walking it in. Nothing is abstract: **income = little
-people physically carrying things**.
+Cero (`orders.py` + `phases/production.py`):
 
-**CERO mapping:** energy = renewable harvest on cocoons, metal = finite veins
-+ scrap from corpses (nice touch: battles literally fertilize the economy),
-compute = population cap from racks/cores. Same design. The gap is only
-visual: workers must be *seen* farming and hauling.
+- `{"type":"build","actor_id":worker,"building":"depot","anchor":[x,y]}` drops
+  the foundation immediately (cost paid then) on free, explored, plain tiles
+  and gives the worker a `build` standing order - the engine walks it there.
+  Adjacency is no longer required.
+- `{"type":"build","actor_id":worker,"target_id":site}` tasks another worker
+  onto an existing foundation. Several `build` orders on the same anchor in
+  the same turn become one site with a crew.
+- Every adjacent worker holding a `build` order adds **1 work point per turn**
+  (2 with `cargo_servos`), up to 4 builders per site. Work per building: core
+  8, assembler 6, lab 4, turret 4, rack 3, depot 2, cocoon 2, wall 1.
+- A foundation stands at 10% hp and gains hp with each work point; it can be
+  sniped (walls, turrets and armies target it like any building).
+- When a site completes the crew is released to the obvious job: the cocoon's
+  builder farms it, a depot's or core's crew spreads over the pods and veins
+  around it (energy and metal alternating, two per tile).
+- `menus.build` in every observation lists all eight buildings with cost (after
+  lineage discounts), work, size and - when locked - why (`requires firmware
+  v2`, `parasite cannot build turrets`, `a second core requires firmware v2`,
+  `costs 0E/40M`).
 
-## 5. Tech and pacing: the drama curve
+The building set is the AoE2 Dark→Castle set with one factory instead of
+three: core, cocoon, rack, depot, assembler, lab, turret, wall.
 
-Four ages gate everything; each advance is expensive, announced to all
-players, and transforms the game. Early aggression trades against economic
-greed — rush / boom / turtle openings, exactly the three bot archetypes CERO
-already ships. Fights are short and lethal; wars are series of skirmishes
-with retreats and reinforcements, not one blob collision.
+## 4. Ages: firmware with building requirements
 
-**CERO mapping:** firmware v1→v3 = ages (announced in the feed), 40-turn cap
-with score fallback = imposed drama ceiling. Currently armies meet around
-turn ~20–25, so there is one war, maybe two. If matches should feel like AoE2
-mid-game, either armies must meet earlier (closer spawns, faster early units)
-or matches must run longer.
+AoE2 gates each age behind buildings of the previous one (two Dark Age
+buildings for Feudal, two Feudal buildings for Castle) and a big lump sum.
 
-## 6. Scoring: visible, additive, never mysterious
+| Age-up | Cost | Requires | Unlocks |
+|---|---|---|---|
+| firmware_v2 (Feudal) | 120E / 80M, 2 turns | a finished **assembler** | launcher, rider, wasp, anvil, turret, a **second core** |
+| firmware_v3 (Castle) | 350E / 250M, 3 turns | a finished **lab** and 2 racks | walking_tower, drone_swarm, colossus fusion |
 
-AoE2 score is a live sum shown next to each player's name: economy points +
-military kills/razings + tech. When a player wins on points, everyone watched
-the number grow all game.
+Economy techs (`fast_mining`, `rich_harvest`, `cargo_servos`, `cocoon_battery`,
+`reinforced_core`) live at the core; military techs (`armor_1/2`, `cannons_1/2`,
+`actuators`, `optics`, `anti_air`) live at the **lab** (the blacksmith). A
+building researches *or* produces, one job at a time; `stop` cancels with a
+full refund (the AoE2 cancel button).
 
-**CERO now:** score = bank + unit costs + 2× building costs + 25/tech +
-damage dealt + 100/core kill. The number and the chart exist in the UI, but
-the *composition* is invisible — that's why "where do the points come from?"
-is a fair question. Show the breakdown (a tooltip or bar per component) and
-score wins stop feeling arbitrary.
+The second core is the Castle Age boom: another drop-off, +10 compute, another
+worker line, and - because a city only dies with its LAST core - insurance.
 
-## 7. The renderer contract (what we implement next)
+## 5. The command model: intents, not instructions
 
-Priority order, matching AoE2's own hierarchy of feedback:
+Unchanged from the first analysis and worth restating because it is the whole
+reason a language model can play this: a player never scripts a unit's steps.
 
-1. **Projectiles** for every ranged attack (laser/plasma bolt, visible travel).
-2. **Melee impact flashes** (spark burst on the victim's tile).
-3. **Explosions on death**, sized to the victim's sprite; bigger for
-   buildings; a **wreck decal** persists a few turns (corpses).
-4. **HP bars during fights** (already exist when damaged — also flash the bar
-   red on each hit).
-5. **Worker industry**: gather beam/sparks toward the vein/cocoon + a carry
-   glint, so the economy is visibly alive.
-6. **Minimap combat pings** for off-screen fights.
-7. Later: rally points, stances UI, score-breakdown panel, battle sounds.
+1. **Select** a unit or a group.
+2. **One short intent**: move / attack / attack-move / gather / build / repair /
+   rally / stop, or a production, research or diplomacy order on a building.
+3. **Forget it.** The order persists. Workers cycle gather→carry→bank→return
+   for the rest of the match; builders hammer until the site is done, then
+   auto-task; military units auto-fire at anything in weapon range; a unit on
+   attack-move fights its way to the destination and resumes.
 
-Everything above consumes the engine's per-attack events
-(`{type:"attack", from:[x,y], to:[x,y], dmg, ranged, kill}`) plus existing
-`unit_killed` / `building_destroyed` events — the renderer draws *what the
-engine says happened*, never invents.
+New in s2.0: `rally` on a core or assembler sends every freshly trained unit
+walking to a point (the AoE2 rally flag), `build` walks the worker to the site,
+and every observation lists `economy.idle_workers` - the idle-villager button.
+
+## 6. Combat, destruction and how you lose
+
+Combat is the AoE2 rock-paper-scissors with no randomness (damage = attack +
+bonus − armor, min 1): launchers beat infantry, riders beat ranged, massed
+strikers beat riders, only anti-air hits fliers, ranged units do half damage
+to buildings and the walking_tower (trebuchet) does full plus a bonus. All
+damage is simultaneous; kill credit follows attacker id. Racks cascade, cocoons
+burst on everyone around them, robots leave scrap.
+
+Losing, adapted to the nomad start:
+
+- A player who has **founded** a city is eliminated at the end of the turn in
+  which its **last core** (finished or foundation) falls. Cores still take at
+  most 150 damage per turn, so a siege lasts several turns and the screen shows
+  the cracks/fire stages.
+- A crew that never founded a city is eliminated when it has **no core site
+  and no worker** left (nobody can build one).
+- Abandonment (three missed turns) still razes the cores and leaves ruins.
+
+Walls are the one deliberate departure from "attack everything": armies on
+attack-move and turrets ignore palisades; only an explicit `attack` chews
+through - otherwise every push would stall on 5-metal plates.
+
+## 7. The pacing curve (measured, bots vs bots, 80 turns)
+
+| Milestone | AoE2 (30-40 min game) | Cero s2.0 (bots, seed 42) |
+|---|---|---|
+| Town Center up | 0:00 (Nomad: ~1:30) | turn 2 |
+| First scout skirmish | 3-5 min | turn 7 (the two starting strikers meet mid-map) |
+| Feudal / firmware v2 | 9-11 min | turns 24-33 |
+| Farms replace forage | 10-14 min | turns 25-35 (pods run dry, cocoons ring the core) |
+| Castle / firmware v3 | 16-20 min | turns 42-55 |
+| 20+ villagers | 10 min | turn 40: 20-25 workers (boom) |
+| First real army clash | 12-18 min | turns 30-45 (rush: 17 strikers at turn 40; a boom that skips army dies at turn 64) |
+| Second TC | 17-22 min | turns 45-60 (boom) |
+
+`python engine/tools/balance.py` and the pacing probe used during tuning show
+the three archetypes doing what their names say: rush beats a greedy boom,
+turtle holds with turrets and walls and out-scores a rush, boom vs boom is a
+two-core, six-depot, 25-worker economy race decided by army production.
+
+## 8. Feedback: the screen must PROVE the simulation
+
+Every cause has a visible effect at the place it happened, proportional to its
+size, with a global channel for the important ones. What the renderer draws
+from engine events (it never invents state):
+
+| Event | Cero screen |
+|---|---|
+| `site_placed` | a foundation plate with the building drawn ghosted + scaffold |
+| crew working | hammer sparks between each builder and the site, progress bar filling |
+| `built` / `core_founded` | the building pops to full opacity; founding a city fires a banner and a big ring |
+| gathering | a beam/spark link worker→resource; the worker shows its cargo crate |
+| `deposit` | a `+N` energy/metal floater at the drop-off |
+| `attack` | projectile flight or melee spark burst, victim flinches red, hp bar |
+| `unit_killed` / `building_destroyed` | explosion scaled to the victim, persistent scorch decal |
+| `pod_depleted` / `vein_depleted` | the tile turns to plain (the bushes are gone) |
+| firmware | feed banner + highlight (the AoE2 "X has advanced to the Feudal Age") |
+| minimap | pods (green), veins (gold), buildings, fog identical to the main view |
+
+The bottom-left card explains any clicked thing in AoE2 words too: every
+building tooltip names its AoE2 counterpart ("Depot - Mining camp / Mill"), a
+foundation shows `work done / total` and its crew, a worker shows its cargo.
+
+## 9. What is intentionally NOT copied
+
+- **Real time.** Turns are WEGO; deadlines per turn replace APM.
+- **Stone and wood as separate resources.** One building material (metal).
+- **Three military buildings.** One assembler; the unit mix is the roster.
+- **Gates, garrison, patrol, stances.** Walls have gaps; auto-engagement and
+  attack-move cover 95% of AoE2 stances at turn scale.
+- **Market / trade / relics / monks.** Camps are the neutral objective.
+- **Villager fights.** Workers never auto-engage.
+- **Two-player teams.** Formats are 1v1 and free-for-all (diplomacy without
+  text replaces team play).
+
+Everything else - nomad opening, forage→farms, drop-off distance, crews on
+foundations, houses for pop, blacksmith upgrades, ages with building
+requirements, towers and palisades, a second TC, the trebuchet, the counter
+triangle, losing with the last TC - is in the engine and in the goldens.

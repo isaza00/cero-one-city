@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     env: str = "dev"
 
     access_token_minutes: int = 15
-    refresh_token_days: int = 30
+    refresh_token_days: int = 3650  # effectively "never" — refresh also rotates on every use
 
     # Practice matches (paid by the game) and house agents.
     practice_provider: str = "anthropic"

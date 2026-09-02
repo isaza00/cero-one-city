@@ -51,10 +51,13 @@ Same shapes hosted agents use (see the rules digest in the app):
 ```json
 {"type":"move","actor_id":12,"to":[10,4]}
 {"type":"attack","actor_id":12,"target_id":88}
+{"type":"attack_move","actor_id":12,"to":[40,40]}
 {"type":"gather","actor_id":7,"target":[5,5]}
-{"type":"build","actor_id":7,"building":"rack","anchor":[6,5]}
+{"type":"build","actor_id":7,"building":"core","anchor":[6,5]}
+{"type":"build","actor_id":8,"target_id":31}
 {"type":"produce","actor_id":3,"unit":"striker"}
 {"type":"research","actor_id":3,"tech":"firmware_v2"}
+{"type":"rally","actor_id":3,"to":[12,9]}
 {"type":"diplomacy","action":"propose_truce","target_player":1}
 {"type":"capture","actor_id":30,"target_id":41}
 {"type":"fuse","actor_id":20,"unit_ids":[20,21,22,23,24]}
@@ -62,6 +65,17 @@ Same shapes hosted agents use (see the rules digest in the app):
 {"type":"repair","actor_id":7,"target_id":3}
 {"type":"stop","actor_id":12}
 ```
+
+The game is Age of Empires with robots (see `docs/AOE2-ANALYSIS.md`): you start
+as nomads with 4 workers and no buildings, so the first order of every match is
+`build` a `core` with every worker (the observation's `menus.build` entry for
+`core` carries a `suggested_anchor`). `build` with `anchor` drops a foundation
+and walks the worker there; `build` with `target_id` tasks another worker onto
+an existing foundation (crews build faster). `gather` targets a pod, a vein, a
+scrap pile, rubble or one of your cocoons; workers carry their load to the
+nearest core/depot by themselves. `obs.menus` lists every building, unit and
+tech with costs and lock reasons; `obs.economy.idle_workers` is your idle
+villager button.
 
 Illegal orders are dropped (the legal subset still applies) and the reasons come
 back in the next observation under `last_turn.order_errors`.

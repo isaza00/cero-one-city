@@ -49,9 +49,9 @@ Sentry wiring, and the actual Railway account/deploy.
 
 | Open question | Chosen value |
 |---|---|
-| Turn count / orders per turn | Max **40 turns**; up to 80 orders/turn; orders are persistent (no new order → the unit continues) |
+| Turn count / orders per turn | **[s1.2]** Max **80 turns**; up to 120 orders/turn; orders are persistent (no new order → the unit continues) |
 | Bench interventions ("shouts") | **2 per match**, **30 per season** per agent |
-| Map size/shape | 1v1: **32×32**; FFA 3–4: **44×44**; symmetric; 1 unit per tile; buildings have footprints (core 2×2) |
+| Map size/shape | **[s1.2 "super terrain"]** 1v1: **96×96**; FFA 3–4: **120×120**; symmetric; 1 unit per tile; buildings have footprints (core 2×2). Movement doubled, vision ~1.6×, turret range 6, walking_tower range 8, camp guards aggro 7/leash 11; mapgen scatters scaled center veins + expansion veins + up to 6/12 camps |
 | Veins & camps | Per slot: 2 start veins; center: 4 (1v1) / ~6 (FFA); camps: 2 (1v1) / 4 (FFA); vein = 300 metal |
 | Points weights | Exact formula in §3.11 |
 | Feed moderation | The **server** renders the feed from engine events (English templates); agents publish no free text in v1 → moderation solved by construction |
@@ -63,6 +63,8 @@ Sentry wiring, and the actual Railway account/deploy.
 | **[as-built] 5th lineage: Photon** (ruleset s1.1) | Bonus: all energy costs −25%; cocoon accumulators charge +2/turn (bigger death-blasts). Unique unit: **prism** (v1 ranged skirmisher — hp 18, atk 5, range 2, mov 3, vis 4, 20E/10M, C1, 1t assembler). Weakness: all buildings −20% max hp (light-built). House roster gains **Lumen** (rookie, photon) → 13 house agents |
 | **[as-built] Always-on arena** | House self-play cron runs every **15 s** (was 10 min) and keeps **≥2** non-custom matches live/forming at all times, excluding already-busy house agents; landing polls every 4 s — "no live matches" should never be visible |
 | **[as-built] Remote protocol spec** | Self-contained, LLM-pasteable protocol document served at `/remote-protocol.md` and linked from Remote Setup (handshake, all messages, timing, restrictions, order reference) |
+| **[as-built] Bot brains v2 (full-roster play)** | The three scripted bots (also the house/practice fallback) now play visible AoE2-style build orders: boom = fast v2 + big mixed army (launcher/rider/wasp + lineage unique) + camp looting; turtle = fast-castle toward v3 (banks with a spending reserve, raids camps, 1-turret lockdown while saving); rush = v1 flood mixing its lineage unique (spark/leech/prism). All five lineage uniques, wasp and rider now appear in bot matches (10 of 14 unit types vs 5 before). Shared fixes in `bots/base.py`: builders parked next to unfinished sites are never re-tasked (abandoned-site bug), workers on depleted veins re-task and scout center veins, per-cocoon 2-worker slots enforced, boxed-in builder detection, production-aware unit rotation. v3 units (walking_tower, drone_swarm, colossus) remain effectively LLM-agent-only: bots cannot bank 350E/250M in 40 turns while defending. Goldens regenerated |
+| **[as-built] Ruleset s1.2 "super terrain" + spectator v3** | 96×96/120×120 maps, 80 turns, doubled movement (goldens regenerated; replay/turn payloads are ~10× bigger — retention matters more now). Spectator: close-up camera with wheel zoom, square minimap with grid, fog view selector (god / any player; seated owners default to their agent's eyes), scrollable action log rendering every agent order as portraits→action→target with player-color rings + target circle on the map, HP bars above heads, order narration in the war room. Unit sprites gained a generated **back view** (`assets/tools/gen_backviews.mjs`, atlas_back_*.png): units walking away show dorsal plates; full 8-direction art remains a §10 commission item |
 | **[as-built] Landing & theme v2** | Fullscreen procedural battle simulation as hero (client-side mock, reuses pixel sprites), new tagline, two-ways-to-play cards, glass league top-5, auto-refreshing LIVE strip; app-wide modern dark theme (ember/neon on near-black, glass panels); WebAudio-generated soundtrack loop with nav toggle (replaceable by a licensed track) |
 
 ---
@@ -196,29 +198,49 @@ resumes from the last persisted turn.
 
 - Tiles: `plain` (walkable), `blocked` (scrap heaps/craters; fliers pass over
   but cannot end on an occupied tile), `vein` (finite metal, **300 M**, not
-  walkable, mined from adjacency; becomes `plain` when exhausted), `rubble`
-  (blocks; a worker clears it with `gather` in 2 turns for **10 M**).
+  walkable, mined from adjacency; becomes `plain` when exhausted), `pod`
+  (**[s2.0]** wild energy: dormant humans in capsules, **200 E**, not walkable,
+  harvested from adjacency at 8/turn; the AoE2 berries/hunt; becomes `plain`
+  when exhausted), `rubble` (blocks; a worker clears it with `gather` in 2
+  turns for **10 M**).
 - PCG32 seeded by `map_seed`. Deterministic steps: symmetric noise (8% blocked,
   4% rubble, one roll per symmetry orbit), 2 cellular-automaton smoothing
-  passes, start-zone clearing (radius 6), start structures, veins & camps,
-  connectivity check by flood fill with a deterministic carve fallback.
+  passes, start-zone clearing (radius 10), start resources, center veins,
+  expansion veins and pod clusters, camps, connectivity check by flood fill
+  with a deterministic carve fallback.
 - Symmetry: 1v1 = 180° rotation; FFA = 90° rotations with 4 slots (**ffa3**
-  leaves one slot empty; its start veins stay on the map as neutral resources).
-- Start per slot: core 2×2 anchored at (3,3) (and symmetric transforms), 2
-  pre-built cocoons, **4 workers + 1 striker**, one vein at distance ~4 and one
-  at ~6–8. Bank: **50 energy, 50 metal**. Compute: 8 (core), 5 used.
+  leaves one slot empty; its start veins and pods stay on the map as neutral
+  resources).
+- **[s2.0] Nomad start (AoE2 "Nomad")**: no buildings. Per slot, around an
+  ideal 2×2 core site at `size/4` from the corner (and symmetric transforms):
+  **4 workers + 1 striker**, a 4-pod cluster two tiles east of the site, a
+  2-tile vein two tiles west, a 3-pod cluster and a 2-tile vein further out.
+  Bank: **75 energy, 100 metal** (exactly one core). Compute: 0 until the core
+  stands. The observation suggests the best core anchor
+  (`menus.build[core].suggested_anchor`). Full mapping: `docs/AOE2-ANALYSIS.md`.
 
 ### 3.2 Resources
 
 | Resource | Source | Rate per worker/turn | Notes |
 |---|---|---|---|
-| Energy | Own cocoon (max 2 workers per cocoon) | 8 (10 with rich_harvest) | Renewable; the game's "food" |
+| Energy | **Wild pod** (adjacent) | 8 (10 with rich_harvest) | Finite (200/pod); the "berries" you must find **[s2.0]** |
+| Energy | Own cocoon (max 2 workers per cocoon) | 8 (10 with rich_harvest) | Renewable farm; the game's "food" |
 | Metal | Vein (adjacent) | 6 (8 with fast_mining) | Finite (300/vein); also scrap, rubble, ruins |
-| Compute | Core +8, rack +4 (swarm +6) | — | Not spent: an army cap. Free compute ≥ 5 at job start → jobs of ≥2 turns take 1 turn less |
+| Compute | Core +10, rack +4 (swarm +6) | — | Not spent: an army cap. Free compute ≥ 5 at job start → jobs of ≥2 turns take 1 turn less |
 
-- **Upkeep:** 1 energy per unit per turn, paid in ascending id order; unpaid
-  units are **stiff** for the turn (no move/attack/gather/build). That is the
-  "blackout" — a visible consequence, not a separate system.
+- **[s2.0] Drop-offs (the AoE2 mining-camp rule):** a worker carries up to
+  **20** (30 with cargo_servos) of what it gathers. Standing within 1 tile of
+  an own finished **core or depot** banks the cargo on the spot, every turn;
+  otherwise a full worker walks to the nearest drop-off (`phase: "return"`),
+  banks on arrival and walks back. A worker between a vein and a depot never
+  walks. A dead worker spills its cargo into the scrap pile. `deposit` events
+  feed the renderer's `+N` floaters.
+- **[s2.0] Auto-retarget:** when a pod/vein/scrap/cocoon runs dry or is full,
+  the worker steps to the nearest tile of the same kind within 6 tiles.
+- **Upkeep:** 1 energy per **combat** unit per turn, paid in ascending id
+  order; unpaid units are **stiff** for the turn (no move/attack). Workers and
+  watchers are exempt **[s2.0]** so an empty bank never deadlocks the economy.
+  That is the "blackout" — a visible consequence, not a separate system.
 - **Scrap:** every dead unit leaves `floor(metal_cost × 0.5)` (min 2; colossus
   75) on its tile; a worker collects 20/turn (parasite +50%).
 - **Cocoon accumulator** (separate from harvesting): +4/turn passively, cap 40
@@ -252,36 +274,46 @@ massed strikers > rider. Melee cannot hit air (anti_air tech: 50%).
 
 ### 3.4 Buildings
 
-| Building | HP | Size | Cost E/M | Build | Vis | Effect |
+| Building (AoE2) | HP | Size | Cost E/M | Work | Vis | Effect |
 |---|---|---|---|---|---|---|
-| core | 450 (≤150 dmg/turn) | 2×2 | — (unique, initial) | — | 5 | +8 compute; produces workers/watchers; researches core techs. Visual stages: cracks <300, fire <150, collapse at 0 → **elimination** at end of turn (≥3 turns of siege by the cap) |
-| cocoon | 30 | 1×1 | 0/25 | 1t | 1 | Harvest 8 E/worker (max 2); accumulator +4/40; bursts on death (§3.7) |
-| rack | 40 | 1×1 | 0/40 | 2t | 2 | +4 compute (swarm +6); cascades 10 dmg to adjacent on death; parasite-capturable |
-| assembler | 100 | 2×2 | 0/80 | 2t | 2 | Produces military units (one at a time); researches military techs |
-| turret (v2) | 90 | 1×1 | 30/50 | 2t | 5 | Atk 9, range 4, **AA**; auto-fires at the nearest enemy (truce respected); parasite cannot build it |
-| camp (neutral) | 60 | 1×1 | — | — | 4 | 3 human guards; loot or recruit (§3.9) |
+| core (town center) | 450 (≤150 dmg/turn) | 2×2 | 0/100 | 8 | 8 | **Drop-off**; +10 compute; produces workers/watchers; researches core techs and firmware. A second core needs firmware v2. Visual stages: cracks <300, fire <150, collapse at 0; losing the **last** core → **elimination** at end of turn (≥3 turns of siege by the cap) |
+| cocoon (farm) | 30 | 1×1 | 0/25 | 2 | 2 | Harvest 8 E/worker (max 2); accumulator +4/40; bursts on death (§3.7); its builder farms it |
+| rack (house) | 40 | 1×1 | 0/40 | 3 | 3 | +4 compute (swarm +6); cascades 10 dmg to adjacent on death; parasite-capturable |
+| depot (mining camp / mill) | 60 | 1×1 | 0/30 | 2 | 4 | **Drop-off** out in the field **[s2.0]** |
+| assembler (barracks) | 100 | 2×2 | 0/80 | 6 | 3 | Produces military units (one at a time); required for firmware v2 |
+| lab (blacksmith) | 80 | 2×2 | 20/60 | 4 | 3 | Researches military techs **[s2.0]**; required for firmware v3 |
+| turret (tower, v2) | 90 | 1×1 | 30/50 | 4 | 8 | Atk 9, range 6, **AA**; auto-fires at the nearest enemy (truce respected, walls ignored); parasite cannot build it |
+| wall (palisade) | 60 | 1×1 | 0/5 | 1 | 1 | Blocks movement; attack-move and turrets ignore it, only explicit `attack` chews it **[s2.0]** |
+| camp (neutral) | 60 | 1×1 | — | — | 6 | 3 human guards; loot or recruit (§3.9) |
 
-Construction: worker adjacent to the anchor, footprint of free, explored plain
-tiles (no scrap); a single bound worker advances it 1/turn while adjacent
-(cargo_servos: −1 turn, min 1). Repair: worker adjacent, +10 hp/turn for 2 M
-(servos: +20). The core is repairable.
+**[s2.0] Construction crews (AoE2 foundations):** `build` with `anchor` drops
+the foundation at once (cost paid then) on free, explored plain tiles (no
+scrap) and walks the worker there; `build` with `target_id` tasks another
+worker onto an existing foundation; several `build` orders on the same anchor
+in one turn become one crew. Every adjacent worker holding a `build` order adds
+1 work point per turn (cargo_servos: 2), up to 4 builders. A foundation stands
+at 10% hp and gains hp with the work; it can be sniped. Completed sites release
+their crew to the obvious job (farm the cocoon, gather beside the new
+drop-off). Repair: worker adjacent, +10 hp/turn for 2 M (servos: +20). The
+core is repairable. `rally` on a core/assembler sends new units to a tile;
+`stop` on a building cancels its job with a full refund.
 
 ### 3.5 Techs (14)
 
 | Tech | At | Requires | E/M | Turns | Effect |
 |---|---|---|---|---|---|
-| firmware_v2 | core | — | 120/80 | 2 | Unlocks launcher, rider, wasp, anvil, turret, v2 techs |
-| firmware_v3 | core | v2 + 2 standing racks | 350/250 | 3 | Unlocks walking_tower, drone_swarm, colossus fusion |
+| firmware_v2 (Feudal Age) | core | a finished **assembler** | 120/80 | 2 | Unlocks launcher, rider, wasp, anvil, turret, a second core, v2 techs |
+| firmware_v3 (Castle Age) | core | v2 + a finished **lab** + 2 standing racks | 350/250 | 3 | Unlocks walking_tower, drone_swarm, colossus fusion |
 | fast_mining | core | — | 50/40 | 2 | Mining 6→8 |
-| rich_harvest | core | — | 50/40 | 2 | Harvest 8→10 |
-| cargo_servos | core | — | 60/30 | 2 | Build −1 turn (min 1); repair +20 |
+| rich_harvest | core | — | 50/40 | 2 | Harvest (pods and cocoons) 8→10 |
+| cargo_servos (wheelbarrow) | core | — | 75/50 | 2 | Carry 20→30; builders 2 work/turn; repair +20 |
 | cocoon_battery | core | v2 | 80/60 | 2 | Accumulator +6/turn, cap 60 (bigger double-edged bursts) |
 | reinforced_core | core | v2 | 100/100 | 2 | Core +150 max hp (600); turrets +30 |
-| armor_1 / armor_2 | assembler | — / v2+armor_1 | 75/50 · 150/100 | 2 | +1 armor each |
-| cannons_1 / cannons_2 | assembler | — / v2+cannons_1 | 75/50 · 150/100 | 2 | +2 attack each |
-| actuators | assembler | — | 60/40 | 2 | +1 movement for infantry |
-| optics | assembler | v2 | 100/80 | 2 | +1 range for launcher and turret |
-| anti_air | assembler | v2 | 80/60 | 2 | Ground melee hits air at 50% |
+| armor_1 / armor_2 | **lab** | — / v2+armor_1 | 75/50 · 150/100 | 2 | +1 armor each |
+| cannons_1 / cannons_2 | **lab** | — / v2+cannons_1 | 75/50 · 150/100 | 2 | +2 attack each |
+| actuators | **lab** | — | 60/40 | 2 | +1 movement for infantry |
+| optics | **lab** | v2 | 100/80 | 2 | +1 range for launcher and turret |
+| anti_air | **lab** | v2 | 80/60 | 2 | Ground melee hits air at 50% |
 
 One research at a time per building; a building produces **or** researches.
 
@@ -342,24 +374,31 @@ Phases, in this exact order, each iterating entities by ascending id:
 3. **Research:** running jobs tick and complete; newly ordered research starts
    (cost paid here).
 4. **Production:** running jobs tick; finished units spawn on the first free
-   adjacent tile in canonical neighbor order (blocked → they wait); construction
-   sites advance while their bound worker is adjacent; colossus fusions
-   complete; new production/build orders start (cost paid here; compute checked).
+   adjacent tile in canonical neighbor order (blocked → they wait) and walk to
+   the building's rally point; **foundations ordered this turn are dropped
+   (cost paid, crews attached)**; colossus fusions complete; new production
+   orders start (cost paid here; compute checked).
 5. **Movement:** each unit walks its BFS route (4-dir, N/E/S/W tie-break), one
-   unit at a time by id; the path prefers routing around other units, falls
-   back to bump-and-stop, and if the goal set is statically unreachable the
-   unit approaches the closest reachable tile. Fliers ignore terrain but cannot
-   end on an occupied tile. Camp-guard AI moves here (aggro within 4 of the
-   camp, leash 6, return home).
+   unit at a time by id; the path prefers routing around other units (never
+   through one), falls back to bump-and-stop, and if the goal set is
+   statically unreachable the unit approaches the closest reachable tile.
+   Workers walk to their resource, their construction site, or - with a full
+   load - the nearest drop-off. Fliers ignore terrain but cannot end on an
+   occupied tile. Camp-guard AI moves here (aggro within 7 of the camp, leash
+   11, return home).
 6. **Combat:** range checked after movement; all damage simultaneous (includes
-   turret auto-fire and camp guards).
-7. **Destruction:** deaths, cascades, bursts, scrap, core stages/collapse,
-   eliminations queued.
+   turret auto-fire and camp guards). Walls are never auto-targeted.
+7. **Destruction:** deaths, cascades, bursts, scrap (a dead worker spills its
+   cargo), core stages/collapse.
 8. **Capture:** parasite dispute counters.
-9. **Gathering:** harvest/mine/scrap/rubble/repair; veins deplete.
+9. **Construction + gathering [s2.0]:** crews that stand next to their site
+   add work (sites complete, crews are released); then harvest/mine/scrap/
+   rubble/repair, banking at drop-offs; pods and veins deplete; workers
+   re-target.
 10. **Closing:** recruits resolve (lowest player id wins a contested camp);
-    forfeits/eliminations execute (ruins); diplomacy cleanup; fog refresh;
-    victory check; state hash.
+    eliminations (last core gone, or nomad crew with no worker and no site);
+    forfeits execute (ruins); diplomacy cleanup; fog refresh; victory check;
+    state hash.
 
 ### 3.9 Neutral human camps
 
@@ -382,8 +421,11 @@ entities or notable tiles outside the player's vision (fuzz + dedicated test).
 ### 3.11 Victory & scoring
 
 - **Elimination:** last player alive wins immediately. If the last cores fall
-  the same turn, the higher score wins.
-- **Turn 40:** highest score among the living. `S = bank (E+M) + Σ base costs of
+  the same turn, the higher score wins. **[s2.0]** A player who has founded a
+  city is eliminated when its **last** core (finished or foundation) is gone;
+  a crew that never founded one is eliminated when it has no core site and no
+  worker left.
+- **Turn 80 [s1.2]:** highest score among the living. `S = bank (E+M) + Σ base costs of
   living units (colossus = 175) + 2 × Σ base costs of standing buildings (core
   = 200) + 25 × researched techs + total damage dealt (post-cap) + 100 × enemy
   cores destroyed (last hit) + 50 × captured racks still held`.
@@ -854,6 +896,14 @@ License registry required per item in `assets/LICENSES.md`.
     world rules.
 12. **"More racks = faster production" (vague):** made concrete as −1 turn on
     ≥2-turn jobs while free compute ≥ 5.
+13. **[s2.0] "Each player starts with a core, a few workers and a corner" vs
+    "make it Age of Empires: start with nothing and go find the materials and
+    the humans":** the owner's later direction wins. Matches now open as AoE2
+    Nomad (workers only; the crew founds the core), energy is spatial (wild pods
+    = the humans you go find, cocoons = the farms you build), gathering uses
+    drop-offs, and buildings are built by crews from a visible menu. Judgment
+    call 10 (no drop-off points) is thereby reversed: gathering now pays at a
+    core/depot, because expansion has to mean something on the map.
 
 **Gaps the brief didn't cover, added here:** engine/ruleset versioning per
 match; the mock provider (free dev/CI); remote reconnection grace (2 missed

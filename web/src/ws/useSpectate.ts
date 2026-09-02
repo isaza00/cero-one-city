@@ -60,7 +60,7 @@ export function useSpectate(matchId: string | undefined): SpectateData {
             events: msg.events ?? [],
             scoreboard: msg.scoreboard ?? d.scoreboard,
             feed: [...d.feed, ...(msg.feed ?? []).map((f: FeedLine) =>
-              ({ ...f, turn: msg.turn_number }))].slice(-80),
+              ({ ...f, turn: msg.turn_number }))].slice(-300),
           }));
         } else if (msg.type === "highlight") {
           setData((d) => ({
@@ -104,7 +104,7 @@ export function useSpectate(matchId: string | undefined): SpectateData {
             state: td?.state ?? d.state,
             feed: td?.feed?.length
               ? [...d.feed.filter((f: FeedLine) => (f.turn ?? -1) !== turn),
-                 ...td.feed.map((f: FeedLine) => ({ ...f, turn }))].slice(-80)
+                 ...td.feed.map((f: FeedLine) => ({ ...f, turn }))].slice(-300)
               : d.feed,
             finished: d.finished || match.status === "finished",
           };

@@ -2,22 +2,27 @@
 // (assets/style-page.md): Endesga-32 only, gunmetal steel bodies, 1px #181425
 // outlines, lineage color ONLY in glows, battle wear, menacing industrial.
 //
-// Draws with a headless-Chromium canvas (no node-canvas dependency), then
-// writes per-tint atlases + manifest to assets/sprites/ and web/public/sprites/.
+// Draws with the dependency-free pixel canvas in ./pixelcanvas.mjs (plain
+// Node, no browser, no node-canvas), then writes per-tint atlases + manifest
+// to assets/sprites/ and web/public/sprites/.
 //
 //   node assets/tools/gen_buildings.mjs
 //
-// Atlas layout (256x96 per tint):
-//   row 0 (64px cells): core f0, core f1, assembler f0, assembler f1
-//   row 1 (32px cells): cocoon f0,f1 · rack f0,f1 · turret f0,f1 · camp f0,f1
+// Atlas layout (384x96 per tint):
+//   row 0 (64px cells): core f0,f1 · assembler f0,f1 · lab f0,f1
+//   row 1 (32px cells): cocoon f0,f1 · rack f0,f1 · turret f0,f1 · camp f0,f1 ·
+//                       depot f0,f1 · wall f0,f1
+//
+// AoE2 mapping: core = town center, cocoon = farm, rack = house, depot = mining
+// camp / mill, assembler = barracks, lab = blacksmith, turret = tower, wall =
+// palisade, camp = neutral village.
 
-import { createRequire } from "module";
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { PixelCanvas } from "./pixelcanvas.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const { chromium } = createRequire(join(root, "web", "package.json"))("playwright");
 
 const TINTS = {
   swarm: ["#2ce8f5", "#0099db"],
@@ -27,10 +32,7 @@ const TINTS = {
   neutral: ["#c0cbdc", "#8b9bb4"],
 };
 
-const browser = await chromium.launch();
-const page = await browser.newPage();
-
-const atlases = await page.evaluate((tints) => {
+const atlases = ((tints) => {
   // Palette (Endesga 32)
   const OUT = "#181425", S1 = "#262b44", S2 = "#3a4466", S3 = "#5a6988",
         S4 = "#8b9bb4", S5 = "#c0cbdc", W = "#ffffff",
@@ -38,8 +40,7 @@ const atlases = await page.evaluate((tints) => {
   const FIRE1 = "#feae34", FIRE2 = "#e43b44"; // campfire is always warm
 
   function ctx2(w, h) {
-    const c = document.createElement("canvas");
-    c.width = w; c.height = h;
+    const c = new PixelCanvas(w, h);
     const g = c.getContext("2d");
     g.imageSmoothingEnabled = false;
     return [c, g];
@@ -52,102 +53,122 @@ const atlases = await page.evaluate((tints) => {
   };
 
   // ---------------------------------------------------------------- CORE 64
-  // Armored bunker with the skull brand embedded front and center.
+  // Command fortress in 3/4 view: roof plane + facade, skull-branded gate,
+  // corner watchtowers, beacon mast. Reads as the settlement's keep.
   function core(g, [G1, G2], f) {
-    // base platform + fortress block
-    rect(g, 3, 54, 58, 8, OUT); rect(g, 4, 55, 56, 6, S1);
-    rect(g, 5, 20, 54, 36, OUT); rect(g, 6, 21, 52, 34, S2);
-    rect(g, 6, 21, 52, 3, S3); // top bevel
-    // corner buttresses
-    rect(g, 6, 24, 8, 31, S1); rect(g, 50, 24, 8, 31, S1);
-    px(g, 9, 28, S3); px(g, 9, 36, S3); px(g, 9, 44, S3);
-    px(g, 54, 28, S3); px(g, 54, 36, S3); px(g, 54, 44, S3);
-    // skull: dome
-    rect(g, 19, 10, 26, 8, OUT); rect(g, 20, 11, 24, 6, S4);
-    rect(g, 22, 12, 20, 2, S5);
-    px(g, 24 + (f ? 12 : 0), 12, W); // roaming dome light
-    // cranium
-    rect(g, 17, 17, 30, 24, OUT); rect(g, 18, 18, 28, 22, S4);
-    // eye sockets + glow eyes
-    rect(g, 21, 22, 9, 8, OUT); rect(g, 34, 22, 9, 8, OUT);
-    const e = f ? 1 : 0;
-    rect(g, 23 - e + 1, 24, 4 + e, 4, G2); rect(g, 24, 25, 3, 2, G1);
-    rect(g, 36, 24, 4 + e, 4, G2); rect(g, 37, 25, 3, 2, G1);
-    // nasal + teeth (endoskeleton over dark vent)
-    rect(g, 30, 30, 4, 3, OUT);
-    rect(g, 20, 34, 24, 6, OUT);
-    for (let i = 0; i < 6; i++) rect(g, 21 + i * 4, 35, 2, 4, i % 2 ? S5 : S4);
-    // jaw plate
-    rect(g, 18, 40, 28, 4, S3); rect(g, 18, 43, 28, 1, S1);
-    // side vents on the block
-    for (let i = 0; i < 3; i++) { rect(g, 8, 47 + i * 2, 4, 1, S3); rect(g, 52, 47 + i * 2, 4, 1, S3); }
-    // beacon mast
-    rect(g, 47, 4, 2, 8, S3);
-    px(g, 47, 3, f ? G1 : G2); px(g, 48, 3, f ? G1 : G2);
-    // wear
-    px(g, 12, 52, RUST); px(g, 51, 33, RUST2); px(g, 44, 53, RUST);
-    px(g, 19, 41, RUST2);
+    // ground plate
+    rect(g, 2, 55, 60, 7, OUT); rect(g, 3, 56, 58, 5, S1);
+    px(g, 6, 58, S2); px(g, 57, 58, S2); px(g, 30, 59, S2);
+    // keep: roof plane (light) over facade (dark)
+    rect(g, 9, 20, 46, 12, OUT); rect(g, 10, 21, 44, 10, S3);   // roof
+    rect(g, 10, 21, 44, 2, S4);                                  // roof back lip
+    rect(g, 8, 30, 48, 26, OUT); rect(g, 9, 31, 46, 24, S2);    // facade
+    rect(g, 9, 31, 46, 1, S4);                                   // eave highlight
+    // roof clutter: vents + dish
+    rect(g, 14, 24, 5, 3, S1); rect(g, 26, 23, 5, 3, S1); rect(g, 38, 24, 5, 3, S1);
+    rect(g, 46, 22, 6, 2, S5); px(g, 48, 21, S4);                // dish
+    // gate with skull brand
+    rect(g, 25, 38, 14, 18, OUT); rect(g, 26, 39, 12, 16, S1);
+    rect(g, 31, 39, 2, 16, f ? G2 : S2);                         // door seam glow
+    rect(g, 27, 32, 10, 6, S4);                                  // skull plate
+    px(g, 29, 34, f ? G1 : G2); px(g, 34, 34, f ? G1 : G2);      // eyes
+    rect(g, 28, 37, 8, 1, S5);                                   // teeth
+    // wall lights
+    for (let i = 0; i < 4; i++) px(g, 13 + i * 12, 35, (i + (f ? 1 : 0)) % 2 ? G2 : S3);
+    // corner watchtowers
+    rect(g, 3, 16, 10, 40, OUT); rect(g, 4, 17, 8, 38, S2);
+    rect(g, 2, 13, 12, 5, OUT); rect(g, 3, 14, 10, 3, S3);
+    rect(g, 51, 16, 10, 40, OUT); rect(g, 52, 17, 8, 38, S2);
+    rect(g, 50, 13, 12, 5, OUT); rect(g, 51, 14, 10, 3, S3);
+    px(g, 7, 22, G2); px(g, 7, 34, G2); px(g, 56, 22, G2); px(g, 56, 34, G2);
+    // beacon mast on the right tower
+    rect(g, 55, 4, 2, 9, S3);
+    px(g, 55, 3, f ? G1 : G2); px(g, 56, 3, f ? G1 : G2);
+    // battle wear
+    px(g, 11, 52, RUST); px(g, 49, 41, RUST2); px(g, 42, 54, RUST);
+    px(g, 5, 44, RUST2);
   }
 
   // ----------------------------------------------------------- ASSEMBLER 64
-  // Factory gantry with a half-built skull on the line. Sparks weld.
+  // Factory hall in 3/4 view: sawtooth roof, big hazard-striped door,
+  // conveyor spilling onto the pad, chimney, working crane. Sparks weld.
   function assembler(g, [G1, G2], f) {
-    // floor + conveyor
-    rect(g, 3, 54, 58, 8, OUT); rect(g, 4, 55, 56, 6, S1);
-    rect(g, 7, 44, 50, 10, OUT); rect(g, 8, 45, 48, 8, S2);
-    for (let i = 0; i < 12; i++) px(g, 10 + i * 4, 51, S1); // rollers
-    // side towers
-    rect(g, 3, 14, 12, 42, OUT); rect(g, 4, 15, 10, 40, S2);
-    rect(g, 49, 14, 12, 42, OUT); rect(g, 50, 15, 10, 40, S2);
-    rect(g, 5, 17, 8, 2, S3); rect(g, 51, 17, 8, 2, S3);
-    // cross beam with hazard stripes
-    rect(g, 3, 14, 58, 8, OUT); rect(g, 4, 15, 56, 6, S3);
-    for (let i = 0; i < 14; i++) rect(g, 4 + i * 4, 15, 2, 2, i % 2 ? S5 : S1);
-    // chimney
-    rect(g, 8, 4, 8, 10, OUT); rect(g, 9, 5, 6, 8, S1);
-    if (!f) { px(g, 11, 3, G2); px(g, 12, 2, G2); }
-    // crane cable + claw (frame moves it)
-    const drop = f ? 6 : 0;
-    rect(g, 31, 22, 2, 6 + drop, S5);
-    rect(g, 29, 28 + drop, 6, 3, S3);
-    // half-built skull on the line
-    rect(g, 24, 30, 16, 15, OUT); rect(g, 25, 31, 14, 13, S4);
-    rect(g, 27, 34, 4, 4, OUT);                 // empty socket
-    rect(g, 33, 34, 4, 4, OUT); rect(g, 34, 35, 2, 2, G1); // lit eye
-    rect(g, 25, 40, 14, 2, S3);                 // unfinished jaw line
-    // weld sparks
-    if (f) { px(g, 24, 42, W); px(g, 23, 44, G1); }
-    else { px(g, 40, 43, W); px(g, 41, 41, G1); }
+    // ground plate
+    rect(g, 2, 55, 60, 7, OUT); rect(g, 3, 56, 58, 5, S1);
+    // hall facade
+    rect(g, 6, 30, 52, 26, OUT); rect(g, 7, 31, 50, 24, S2);
+    rect(g, 7, 31, 50, 1, S4);
+    // sawtooth roof: three teeth, lit top faces
+    for (let i = 0; i < 3; i++) {
+      const x = 7 + i * 17;
+      rect(g, x, 22, 17, 9, OUT);
+      rect(g, x + 1, 23, 10, 7, S3); rect(g, x + 1, 23, 10, 1, S4); // lit face
+      rect(g, x + 11, 23, 5, 7, S1);                                 // dark riser
+      px(g, x + 12, 25, (i + (f ? 1 : 0)) % 2 ? G2 : S2);            // skylight
+    }
+    // chimney + smoke
+    rect(g, 48, 10, 8, 13, OUT); rect(g, 49, 11, 6, 11, S1);
+    rect(g, 47, 10, 10, 2, S3);
+    if (f) { px(g, 51, 8, S3); px(g, 53, 6, S2); } else { px(g, 52, 7, S3); }
+    // crane over the yard
+    rect(g, 8, 14, 24, 3, OUT); rect(g, 9, 15, 22, 1, S3);
+    const drop = f ? 4 : 0;
+    rect(g, 19, 17, 1, 5 + drop, S5); rect(g, 17, 22 + drop, 5, 2, S3);
+    // big door with hazard stripes + inner glow
+    rect(g, 24, 38, 16, 18, OUT); rect(g, 25, 39, 14, 16, S1);
+    for (let i = 0; i < 7; i++) rect(g, 25 + i * 2, 36, 2, 2, i % 2 ? OUT : FIRE1);
+    rect(g, 26, 44, 12, 2, f ? G2 : S2); // furnace line inside
+    // conveyor exiting the door
+    rect(g, 26, 56, 12, 4, OUT); rect(g, 27, 57, 10, 2, S2);
+    px(g, 29, 58, S1); px(g, 33, 58, S1);
+    // side windows
+    px(g, 12, 36, G2); px(g, 16, 36, G2); px(g, 47, 36, G2); px(g, 51, 36, G2);
+    // weld sparks in the doorway
+    if (f) { px(g, 28, 48, W); px(g, 27, 50, G1); }
+    else { px(g, 36, 49, W); px(g, 37, 47, G1); }
     // wear
-    px(g, 6, 52, RUST); px(g, 56, 24, RUST2);
+    px(g, 8, 52, RUST); px(g, 55, 34, RUST2); px(g, 44, 54, RUST);
   }
 
   // -------------------------------------------------------------- COCOON 32
-  // Caged energy egg; the orb breathes.
+  // Human energy capsule - the Matrix farm pod. A person floats in glow
+  // liquid; bubbles rise; cables feed the grid.
   function cocoon(g, [G1, G2], f) {
-    rect(g, 12, 3, 8, 4, OUT); rect(g, 13, 4, 6, 2, S2); // top valve
-    // shell
-    rect(g, 8, 6, 16, 22, OUT); rect(g, 9, 7, 14, 20, S2);
-    // ribs
-    rect(g, 9, 7, 2, 20, S3); rect(g, 15, 7, 2, 20, S3); rect(g, 21, 7, 2, 20, S3);
-    // orb window
-    const grow = f ? 1 : 0;
-    rect(g, 12 - grow, 12 - grow, 8 + grow * 2, 10 + grow * 2, OUT);
-    rect(g, 13 - grow, 13 - grow, 6 + grow * 2, 8 + grow * 2, G2);
-    rect(g, 14, 15, 4, 4, G1);
-    px(g, f ? 16 : 14, 14, W);
-    // base clamp
-    rect(g, 6, 26, 20, 5, OUT); rect(g, 7, 27, 18, 3, S1);
-    px(g, 10, 28, S3); px(g, 21, 28, S3);
-    px(g, 9, 9, RUST2);
+    // pad
+    rect(g, 5, 26, 22, 5, OUT); rect(g, 6, 27, 20, 3, S1);
+    // capsule shell with rounded cap
+    rect(g, 12, 3, 8, 3, OUT); rect(g, 13, 4, 6, 1, S3);
+    rect(g, 10, 5, 12, 22, OUT); rect(g, 11, 6, 10, 20, S2);
+    rect(g, 11, 6, 2, 20, S3); // left sheen
+    // glass window: glow liquid
+    rect(g, 12, 8, 8, 15, OUT);
+    rect(g, 13, 9, 6, 13, G2);
+    rect(g, 13, 9, 1, 13, G1); // liquid light column
+    // the sleeping human (dark silhouette)
+    rect(g, 15, 11, 2, 2, OUT);             // head
+    rect(g, 14, 13, 4, 4, OUT);             // torso, arms folded
+    rect(g, 15, 17, 1, 3, OUT); rect(g, 16, 17, 1, 3, OUT); // legs
+    // rising bubbles
+    if (f) { px(g, 14, 10, W); px(g, 18, 15, W); }
+    else { px(g, 18, 10, W); px(g, 14, 18, W); }
+    // feed cables into the ground
+    px(g, 22, 6, S3); px(g, 24, 8, S3); px(g, 25, 11, S3); px(g, 25, 15, S3);
+    rect(g, 8, 16, 2, 8, S3); // return tube
+    // clamps
+    rect(g, 9, 24, 3, 3, S1); rect(g, 20, 24, 3, 3, S1);
+    px(g, 11, 7, RUST2);
   }
 
   // ---------------------------------------------------------------- RACK 32
-  // Server monolith; LEDs think.
+  // Server monolith with a roof cap and cooling fins; LEDs think.
   function rack(g, [G1, G2], f) {
-    rect(g, 6, 3, 20, 27, OUT); rect(g, 7, 4, 18, 25, S2);
-    for (let s = 0; s < 5; s++) {
-      const y = 5 + s * 5;
+    // pad
+    rect(g, 4, 28, 24, 3, OUT); rect(g, 5, 29, 22, 1, S1);
+    // roof cap
+    rect(g, 5, 2, 22, 4, OUT); rect(g, 6, 3, 20, 2, S3); px(g, 8, 3, S4);
+    rect(g, 6, 5, 20, 24, OUT); rect(g, 7, 6, 18, 22, S2);
+    for (let s = 0; s < 4; s++) {
+      const y = 7 + s * 5;
       rect(g, 8, y, 16, 4, S1);
       rect(g, 8, y, 1, 4, S3); rect(g, 23, y, 1, 4, S3); // handles
       // LED pattern alternates per frame
@@ -156,10 +177,11 @@ const atlases = await page.evaluate((tints) => {
       px(g, 21, y + 1, on ? G2 : S3);
       px(g, 19, y + 2, on ? G2 : S3);
     }
-    // feet + top cable
-    rect(g, 7, 29, 4, 2, S1); rect(g, 21, 29, 4, 2, S1);
-    px(g, 26, 4, S3); px(g, 27, 5, S3); px(g, 28, 7, G2);
-    px(g, 24, 12, RUST);
+    // cooling fins
+    for (let i = 0; i < 3; i++) { rect(g, 3, 8 + i * 6, 3, 3, S1); rect(g, 26, 8 + i * 6, 3, 3, S1); }
+    // top cable to the grid
+    px(g, 27, 3, S3); px(g, 28, 5, S3); px(g, 29, 8, G2);
+    px(g, 24, 14, RUST);
   }
 
   // -------------------------------------------------------------- TURRET 32
@@ -183,33 +205,140 @@ const atlases = await page.evaluate((tints) => {
   }
 
   // ---------------------------------------------------------------- CAMP 32
-  // The human holdout: tarp tent, sandbags, a fire that never dies.
+  // The human holdout village: two tarp tents, fence, salvaged solar panel,
+  // and a fire that never dies.
   function camp(g, [G1], f) {
-    // tent
-    for (let i = 0; i < 11; i++) { // triangle tarp
-      rect(g, 15 - i, 9 + i, 2 + i * 2, 1, i % 4 === 3 ? RUST2 : RUST);
+    // big tent
+    for (let i = 0; i < 10; i++) {
+      rect(g, 12 - i, 8 + i, 2 + i * 2, 1, i % 4 === 3 ? RUST2 : RUST);
     }
-    rect(g, 4, 20, 24, 1, OUT);
-    rect(g, 15, 5, 1, 5, OUT); // pole
-    // lineage pennant
-    rect(g, 16, 5, 4, 2, G1);
-    // door shadow
-    rect(g, 13, 15, 5, 5, OUT);
-    // sandbags
-    for (let i = 0; i < 3; i++) rect(g, 3 + i * 4, 26, 4, 3, i % 2 ? RUST : RUST2);
-    rect(g, 3, 25, 12, 1, OUT);
+    rect(g, 2, 18, 22, 1, OUT);
+    rect(g, 12, 4, 1, 5, OUT);          // pole
+    rect(g, 13, 4, 4, 2, G1);           // lineage pennant
+    rect(g, 10, 14, 5, 4, OUT);         // door shadow
+    // small tent, right
+    for (let i = 0; i < 6; i++) {
+      rect(g, 25 - i, 13 + i, 2 + i * 2, 1, i % 3 === 2 ? RUST : RUST2);
+    }
+    rect(g, 19, 19, 13, 1, OUT);
+    // salvaged solar panel leaning on scrap
+    rect(g, 2, 21, 7, 3, OUT); rect(g, 3, 22, 5, 1, S3);
+    px(g, f ? 4 : 6, 22, S5);           // glint wanders
+    // fence posts
+    for (let i = 0; i < 4; i++) rect(g, 3 + i * 3, 27, 1, 3, RUST2);
+    rect(g, 2, 28, 11, 1, RUST);
     // campfire (always warm - fire doesn't care about software)
-    rect(g, 21, 27, 7, 2, RUST2);
-    if (f) { px(g, 23, 25, FIRE2); rect(g, 24, 23, 2, 3, FIRE1); px(g, 24, 22, W); }
-    else { px(g, 26, 25, FIRE2); rect(g, 23, 24, 2, 2, FIRE1); px(g, 25, 23, W); }
-    px(g, 6, 21, S3); px(g, 24, 20, S3); // scrap bits
+    rect(g, 20, 28, 8, 2, RUST2);
+    if (f) { px(g, 22, 26, FIRE2); rect(g, 23, 24, 2, 3, FIRE1); px(g, 23, 23, W); }
+    else { px(g, 26, 26, FIRE2); rect(g, 22, 25, 2, 2, FIRE1); px(g, 24, 24, W); }
+    // clutter: crate + scrap
+    rect(g, 15, 26, 4, 4, S1); px(g, 16, 27, S3);
+    px(g, 29, 21, S3); px(g, 6, 19, S3);
+  }
+
+  // ----------------------------------------------------------------- LAB 64
+  // The blacksmith: a research hall with a domed reactor roof, twin tesla
+  // coils that arc on the odd frame, a glass front showing the glowing
+  // reactor column, and a skull plate over the door.
+  function lab(g, [G1, G2], f) {
+    // ground plate
+    rect(g, 2, 55, 60, 7, OUT); rect(g, 3, 56, 58, 5, S1);
+    px(g, 8, 58, S2); px(g, 55, 58, S2);
+    // hall facade
+    rect(g, 8, 30, 48, 26, OUT); rect(g, 9, 31, 46, 24, S2);
+    rect(g, 9, 31, 46, 1, S4);
+    // flat roof with a dome in the middle
+    rect(g, 8, 24, 48, 8, OUT); rect(g, 9, 25, 46, 6, S3); rect(g, 9, 25, 46, 1, S4);
+    rect(g, 22, 14, 20, 12, OUT); rect(g, 23, 15, 18, 10, S3);   // dome block
+    rect(g, 25, 11, 14, 5, OUT); rect(g, 26, 12, 12, 3, S4);     // dome cap
+    rect(g, 29, 9, 6, 3, OUT); rect(g, 30, 10, 4, 1, S5);        // cap lip
+    px(g, 31, 8, f ? G1 : G2); px(g, 32, 8, f ? G1 : G2);        // dome beacon
+    // twin tesla coils on the roof corners
+    for (const x of [12, 48]) {
+      rect(g, x, 16, 4, 10, OUT); rect(g, x + 1, 17, 2, 8, S3);
+      rect(g, x - 1, 13, 6, 4, OUT); rect(g, x, 14, 4, 2, S4);
+      px(g, x + 1, 12, f ? G1 : G2); px(g, x + 2, 12, f ? G1 : G2);
+    }
+    if (f) { // arc between the coils
+      for (let i = 0; i < 8; i++) px(g, 17 + i * 4, 13 + (i % 2), G1);
+      px(g, 33, 12, W);
+    } else {
+      px(g, 25, 13, G2); px(g, 39, 13, G2);
+    }
+    // glass front: reactor column glowing behind
+    rect(g, 18, 36, 28, 18, OUT); rect(g, 19, 37, 26, 16, S1);
+    rect(g, 30, 38, 4, 14, f ? G1 : G2);                          // reactor core
+    rect(g, 26, 40, 3, 10, G2); rect(g, 35, 40, 3, 10, G2);       // side tubes
+    rect(g, 19, 44, 26, 1, S2);                                   // mullion
+    // skull plate over the door
+    rect(g, 27, 31, 10, 5, S4); px(g, 29, 33, f ? G2 : G1); px(g, 34, 33, f ? G2 : G1);
+    rect(g, 28, 35, 8, 1, S5);
+    // side vents
+    for (let i = 0; i < 3; i++) { rect(g, 11, 38 + i * 5, 5, 2, S1); rect(g, 48, 38 + i * 5, 5, 2, S1); }
+    // wear
+    px(g, 10, 52, RUST); px(g, 53, 33, RUST2); px(g, 44, 54, RUST); px(g, 23, 27, RUST2);
+  }
+
+  // --------------------------------------------------------------- DEPOT 32
+  // The mining camp / mill: a squat loading bunker with a hazard-striped
+  // pad, a crate stack, a small crane that dips on the odd frame and one
+  // lineage lamp so workers find it in the dark.
+  function depot(g, [G1, G2], f) {
+    // pad with hazard stripes at the front
+    rect(g, 3, 24, 26, 7, OUT); rect(g, 4, 25, 24, 5, S1);
+    for (let i = 0; i < 12; i++) rect(g, 4 + i * 2, 29, 2, 1, i % 2 ? OUT : FIRE1);
+    // bunker body
+    rect(g, 6, 12, 18, 14, OUT); rect(g, 7, 13, 16, 12, S2);
+    rect(g, 7, 13, 16, 1, S4);
+    rect(g, 5, 9, 20, 5, OUT); rect(g, 6, 10, 18, 3, S3);   // roof lip
+    // roller door
+    rect(g, 10, 17, 10, 9, OUT); rect(g, 11, 18, 8, 7, S1);
+    rect(g, 11, 20, 8, 1, S2); rect(g, 11, 22, 8, 1, S2);
+    // crate stack beside the door
+    rect(g, 24, 18, 6, 6, OUT); rect(g, 25, 19, 4, 4, RUST);
+    px(g, 26, 20, RUST2); px(g, 27, 21, RUST2);
+    rect(g, 25, 14, 5, 5, OUT); rect(g, 26, 15, 3, 3, S3);
+    // crane arm
+    rect(g, 2, 4, 2, 21, S3); rect(g, 2, 4, 12, 2, S3);
+    const drop = f ? 3 : 0;
+    rect(g, 12, 6, 1, 4 + drop, S5); rect(g, 10, 10 + drop, 5, 2, S4);
+    // lineage lamp
+    rect(g, 20, 10, 3, 3, OUT); px(g, 21, 11, f ? G1 : G2);
+    px(g, 21, 8, G2);
+    // wear
+    px(g, 8, 24, RUST2); px(g, 22, 16, RUST);
+  }
+
+  // ---------------------------------------------------------------- WALL 32
+  // Palisade segment: two riveted posts and welded steel plates with one
+  // glow strip along the top edge (blinks on the odd frame).
+  function wall(g, [G1, G2], f) {
+    // ground shadow
+    rect(g, 3, 27, 26, 3, OUT); rect(g, 4, 28, 24, 1, S1);
+    // plates
+    rect(g, 4, 10, 24, 18, OUT); rect(g, 5, 11, 22, 16, S2);
+    rect(g, 5, 11, 22, 1, S4);
+    rect(g, 5, 18, 22, 1, OUT);                       // plate seam
+    rect(g, 15, 11, 1, 16, OUT);                      // vertical seam
+    // rivets
+    for (const y of [13, 21]) for (const x of [7, 12, 18, 24]) px(g, x, y, S4);
+    for (const y of [15, 23]) for (const x of [9, 22]) px(g, x, y, S1);
+    // posts
+    rect(g, 2, 6, 5, 23, OUT); rect(g, 3, 7, 3, 21, S3); rect(g, 3, 7, 3, 1, S5);
+    rect(g, 25, 6, 5, 23, OUT); rect(g, 26, 7, 3, 21, S3); rect(g, 26, 7, 3, 1, S5);
+    // glow strip
+    rect(g, 7, 9, 18, 1, f ? G1 : G2);
+    px(g, 4, 5, f ? G2 : S3); px(g, 27, 5, f ? S3 : G2);
+    // wear
+    px(g, 9, 25, RUST); px(g, 21, 14, RUST2); px(g, 26, 20, RUST2);
   }
 
   // ------------------------------------------------------------- compose
   const out = {};
+  const canvases = {};
   for (const [tint, glow] of Object.entries(tints)) {
-    const [atlas, g] = ctx2(256, 96);
-    const big = [core, assembler];
+    const [atlas, g] = ctx2(384, 96);
+    const big = [core, assembler, lab];
     big.forEach((draw, bi) => {
       for (let f = 0; f < 2; f++) {
         const [c, cg] = ctx2(64, 64);
@@ -217,7 +346,7 @@ const atlases = await page.evaluate((tints) => {
         g.drawImage(c, bi * 128 + f * 64, 0);
       }
     });
-    const small = [cocoon, rack, turret, camp];
+    const small = [cocoon, rack, turret, camp, depot, wall];
     small.forEach((draw, si) => {
       for (let f = 0; f < 2; f++) {
         const [c, cg] = ctx2(32, 32);
@@ -226,14 +355,10 @@ const atlases = await page.evaluate((tints) => {
       }
     });
     out[tint] = atlas.toDataURL("image/png");
+    canvases[tint] = atlas;
   }
-
-  // contact sheet: all tints stacked, 2x scale
-  const [sheet, sg] = ctx2(512, Object.keys(tints).length * 192);
-  let row = 0;
-  for (const dataUrl of Object.values(out)) { void dataUrl; row++; }
-  return { atlases: out, rows: row };
-}, TINTS);
+  return { atlases: out, canvases };
+})(TINTS);
 
 const spritesDir = join(root, "assets", "sprites");
 const webDir = join(root, "web", "public", "sprites");
@@ -245,10 +370,13 @@ const manifest = {
   buildings: {
     core: { x: 0, y: 0, cell: 64, frames: 2 },
     assembler: { x: 128, y: 0, cell: 64, frames: 2 },
+    lab: { x: 256, y: 0, cell: 64, frames: 2 },
     cocoon: { x: 0, y: 64, cell: 32, frames: 2 },
     rack: { x: 64, y: 64, cell: 32, frames: 2 },
     turret: { x: 128, y: 64, cell: 32, frames: 2 },
     camp: { x: 192, y: 64, cell: 32, frames: 2 },
+    depot: { x: 256, y: 64, cell: 32, frames: 2 },
+    wall: { x: 320, y: 64, cell: 32, frames: 2 },
   },
 };
 
@@ -261,20 +389,12 @@ writeFileSync(join(spritesDir, "buildings.json"), JSON.stringify(manifest, null,
 writeFileSync(join(webDir, "buildings.json"), JSON.stringify(manifest, null, 2));
 
 // Contact sheet (4x zoom, all tints) for human review.
-const sheetUrl = await page.evaluate(async (urls) => {
-  const imgs = await Promise.all(Object.values(urls).map((u) => new Promise((res) => {
-    const i = new Image(); i.onload = () => res(i); i.src = u;
-  })));
-  const c = document.createElement("canvas");
-  c.width = 256 * 4; c.height = imgs.length * 96 * 4;
-  const g = c.getContext("2d");
-  g.imageSmoothingEnabled = false;
-  g.fillStyle = "#0d1117"; g.fillRect(0, 0, c.width, c.height);
-  imgs.forEach((img, i) => g.drawImage(img, 0, i * 96 * 4, 256 * 4, 96 * 4));
-  return c.toDataURL("image/png");
-}, atlases.atlases);
-writeFileSync(join(spritesDir, "buildings_contact_sheet.png"),
-              Buffer.from(sheetUrl.split(",")[1], "base64"));
+const tintCanvases = Object.values(atlases.canvases);
+const sheet = new PixelCanvas(384 * 4, tintCanvases.length * 96 * 4);
+const sg = sheet.getContext("2d");
+sg.fillStyle = "#0d1117";
+sg.fillRect(0, 0, sheet.width, sheet.height);
+tintCanvases.forEach((img, i) => sg.drawImage(img, 0, i * 96 * 4, 384 * 4, 96 * 4));
+writeFileSync(join(spritesDir, "buildings_contact_sheet.png"), sheet.toPNG());
 
-await browser.close();
 console.log("building pack written:", Object.keys(atlases.atlases).join(", "));

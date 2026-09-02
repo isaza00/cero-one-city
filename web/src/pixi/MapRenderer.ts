@@ -11,11 +11,14 @@
 // magnification is locked (cover for live matches, fit for replays), and the
 // viewer moves it by dragging or via the minimap. No wheel zoom.
 
-import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
+import { Application, Container, Graphics, Matrix, Sprite, Texture } from "pixi.js";
 import type { EntityOut, GameEvent, GameState } from "../api/types";
-import { BUILDING_MAX_HP, BUILDING_SIZE, UNIT_MAX_HP } from "../game/meta";
-import { exploredTiles, visibleTiles } from "../game/vision";
-import { getBuildingFrames, getUnitFrames, packReady, unitFacesRight } from "./spritepack";
+import {
+  BUILDING_MAX_HP, BUILDING_SIZE, BUILDING_VISION, CARRY_CAPACITY, UNIT_MAX_HP,
+  UNIT_VISION,
+} from "../game/meta";
+import { PERSPECTIVE_ALL, exploredTilesFor, visibleTilesFor } from "../game/vision";
+import { getBuildingFrames, getUnitFrames, packReady } from "./spritepack";
 
 export const TILE_W = 64;   // diamond width in world px
 export const TILE_H = 32;   // diamond height (2:1 - the AoE2 ratio)
@@ -34,6 +37,7 @@ const PLAIN_SHADES = [0x18202e, 0x1b2432, 0x161d28, 0x1a2231];
 const TERRAIN_BASE: Record<string, number> = {
   blocked: 0x39414e,
   vein: 0x2a2617,
+  pod: 0x16302a,      // wild pods: the energy you FIND (berries), finite
   rubble: 0x3a2f24,
 };
 
@@ -57,6 +61,9 @@ interface Puppet {
   fx: number; fy: number; tx: number; ty: number;
   t0: number; dur: number;
   facing: 1 | -1;
+  gx: number; gy: number;   // last grid tile (for heading)
+  dir: string;              // texture pose: "s" | "se" | "e" | "ne" | "n"
+  mirror: boolean;          // true for w/sw/nw (left poses = mirrored right)
   frames: Texture[];
   framesKey: string;
   frameIx: number;
@@ -81,7 +88,13 @@ export class MapRenderer {
   private sprites = new Container();
   private overlay = new Graphics();
   private selection = new Graphics();
-  private fog = new Graphics();
+  // Fog is a CANVAS overlay, not tile fills: round radial light around every
+  // eye, blurred edges - the classic RTS look. Drawn in grid space, mapped
+  // onto the iso world with a matrix.
+  private fog = new Sprite();
+  private fogCanvas: HTMLCanvasElement | null = null;
+  private fogBlurCanvas: HTMLCanvasElement | null = null;
+  private fogTex: Texture | null = null;
   private root = new Container();
   private terrainKey = "";
   private puppets = new Map<number, Puppet>();
@@ -93,7 +106,13 @@ export class MapRenderer {
   private effects: Effect[] = [];
   private decalList: { x: number; y: number; r: number; t0: number }[] = [];
   private gatherLinks: { id: number; wx: number; wy: number }[] = [];
+  // Builders hammering a foundation: sparks fly between worker and site.
+  private builderLinks: { id: number; sx: number; sy: number }[] = [];
   private eventsTurn = -1;
+  // Measured cadence of turn_resolved arrivals: glides stretch to fill it so
+  // a marching unit flows tile-to-tile instead of dash-stop-dash.
+  private lastTurnAt = 0;
+  private turnMs = 2000;
   /** Fired on click: the picked entity's id, or null for empty ground. */
   onSelect: ((id: number | null) => void) | null = null;
   private selectedId: number | null = null;
@@ -140,7 +159,8 @@ export class MapRenderer {
     this.coverDefault = cover;
     const app = new Application();
     await app.init({ width: this.viewW, height: this.viewH, background: 0x0b0f14,
-                     antialias: false });
+                     antialias: false, autoDensity: true, roundPixels: true,
+                     resolution: Math.min(window.devicePixelRatio || 1, 2) });
     if (this.dead) {
       // destroy() ran while awaiting (React StrictMode double-mount): this
       // renderer must NOT claim the host, or a zombie canvas with no resize
@@ -160,6 +180,8 @@ export class MapRenderer {
 
   destroy(): void {
     this.dead = true;
+    this.fogTex?.destroy(true);
+    this.fogTex = null;
     this.app?.destroy(true, { children: true });
     this.app = null;
     this.puppets.clear();
@@ -183,14 +205,14 @@ export class MapRenderer {
 
   // ------------------------------------------------------------------ camera
 
+  private fitZoom(): number {
+    return Math.min(this.viewW / this.worldW, this.viewH / this.worldH);
+  }
+
   private modeZoom(): number {
-    if (!this.coverDefault) {
-      return Math.min(this.viewW / this.worldW, this.viewH / this.worldH);
-    }
-    // Live camera: at least cover the viewport, but never further out than
-    // ~22 tiles across - close to the ground, AoE2 distance.
-    const cover = Math.max(this.viewW / this.worldW, this.viewH / this.worldH);
-    return Math.max(cover, this.viewW / (22 * TILE_W));
+    // Default view: the whole battlefield, regular size. The wheel zooms in
+    // (up to 2.4x) and the minimap navigates when zoomed.
+    return this.fitZoom();
   }
 
   private resetCamera(): void {
@@ -247,6 +269,21 @@ export class MapRenderer {
     };
     canvas.addEventListener("pointerup", stop);
     canvas.addEventListener("pointercancel", () => { this.dragging = false; });
+    // Wheel zoom, anchored under the cursor: whole-map ... 2.4x close-up.
+    canvas.addEventListener("wheel", (e) => {
+      if (this.worldW <= 0) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const next = Math.min(2.4, Math.max(this.fitZoom(), this.zoom * factor));
+      if (next === this.zoom) return;
+      const wx = (e.offsetX - this.root.x) / this.zoom;
+      const wy = (e.offsetY - this.root.y) / this.zoom;
+      this.zoom = next;
+      this.userCam = true;
+      this.root.x = e.offsetX - wx * this.zoom;
+      this.root.y = e.offsetY - wy * this.zoom;
+      this.applyCamera();
+    }, { passive: false });
   }
 
   /** Click -> select the entity on that tile (units win over buildings). */
@@ -299,6 +336,76 @@ export class MapRenderer {
     this.applyCamera();
   }
 
+  /** The visible world rectangle's corners in TILE coordinates, clockwise from
+   * top-left (for a square top-down minimap; the iso camera maps to a rotated
+   * quad there). Null before the first state. */
+  getViewTileQuad(): { tx: number; ty: number }[] | null {
+    if (this.worldW <= 0) return null;
+    const corners: [number, number][] = [
+      [0, 0], [this.viewW, 0], [this.viewW, this.viewH], [0, this.viewH]];
+    return corners.map(([sx, sy]) =>
+      this.tile((sx - this.root.x) / this.zoom, (sy - this.root.y) / this.zoom));
+  }
+
+  /** Center the camera on a tile position (square-minimap click). */
+  centerOnTile(tx: number, ty: number): void {
+    if (this.worldW <= 0) return;
+    this.userCam = true;
+    const c = this.px(tx, ty);
+    this.root.x = this.viewW / 2 - c.x * this.zoom;
+    this.root.y = this.viewH / 2 - c.y * this.zoom;
+    this.applyCamera();
+  }
+
+  /** Make an agent's order VISIBLE: pulse selection rings on the commanded
+   * units and drop a reticle on the target (entity or tile), AoE2-style. */
+  flashOrder(playerIndex: number, groups: {
+    actor_ids?: number[];
+    target?: { id?: number; x?: number; y?: number; kind?: string };
+    action?: string;
+  }[]): void {
+    const color = PLAYER_TINTS[playerIndex % 4];
+    for (const gr of groups) {
+      // Selection rings: the commanding player's COLOR around each unit.
+      for (const id of (gr.actor_ids ?? []).slice(0, 10)) {
+        const p = this.puppets.get(id);
+        if (!p || p.dying !== null) continue;
+        this.addEffect(2400, (g, k) => {
+          const r = 12 + 2.5 * Math.sin(k * Math.PI * 6);
+          const a = k < 0.8 ? 0.95 : 0.95 * (1 - (k - 0.8) / 0.2);
+          g.ellipse(p.root.x, p.root.y + 8, r, r * 0.5)
+            .stroke({ width: 2.5, color, alpha: a });
+          g.ellipse(p.root.x, p.root.y + 8, r - 3, (r - 3) * 0.5)
+            .stroke({ width: 1, color: 0xffffff, alpha: a * 0.35 });
+        });
+      }
+      const t = gr.target;
+      if (!t) continue;
+      const hostile = gr.action === "attack" || gr.action === "push";
+      let cx = 0, cy = 0, ok = false;
+      if (typeof t.id === "number" && this.puppets.has(t.id)) {
+        const tp = this.puppets.get(t.id)!;
+        cx = tp.root.x; cy = tp.root.y; ok = true;
+      } else if (typeof t.x === "number" && typeof t.y === "number") {
+        const c = this.px(t.x, t.y);
+        cx = c.x; cy = c.y; ok = true;
+      }
+      if (!ok) continue;
+      // Target marker: a BIG pulsing circle in the same player color, so
+      // "who ordered this, at what" reads instantly. Hostile = double ring.
+      this.addEffect(2400, (g, k) => {
+        const a = k < 0.8 ? 0.9 : 0.9 * (1 - (k - 0.8) / 0.2);
+        const r = TILE_W * (0.62 + 0.08 * Math.sin(k * Math.PI * 6));
+        g.ellipse(cx, cy, r, r * 0.5).stroke({ width: 3, color, alpha: a });
+        if (hostile) {
+          g.ellipse(cx, cy, r * 0.72, r * 0.36)
+            .stroke({ width: 2, color: 0xff5252, alpha: a });
+        }
+        g.circle(cx, cy, 2.2).fill({ color, alpha: a });
+      });
+    }
+  }
+
   // ------------------------------------------------------------------ render
 
   render(state: GameState, perspective: number | null, snap = false): void {
@@ -322,23 +429,63 @@ export class MapRenderer {
       }
     }
 
-    this.renderTerrain(state);
+    // Learn the live turn cadence (EMA), so glides last one whole turn.
+    if (!snap && state.turn !== this.eventsTurn) {
+      const now = performance.now();
+      if (this.lastTurnAt > 0) {
+        const dt = Math.min(9000, Math.max(700, now - this.lastTurnAt));
+        this.turnMs = this.turnMs * 0.5 + dt * 0.5;
+      }
+      this.lastTurnAt = now;
+    }
+
+    // Fog sets (single player or the union of everyone): units are only drawn
+    // inside current vision; buildings also on explored ground (last-seen,
+    // AoE2-style). God view (null) draws everything.
+    const fogged = perspective !== null
+      && (perspective === PERSPECTIVE_ALL || !!state.players[perspective]);
+
+    this.renderTerrain(state, fogged);
     this.overlay.clear();
-    this.lastEntities = Object.values(state.entities);
+    const visSet = fogged ? visibleTilesFor(state, perspective!) : null;
+    const expSet = fogged ? exploredTilesFor(state, perspective!) : null;
+    const canSee = (e: EntityOut): boolean => {
+      if (!visSet) return true;
+      const packed = e.y * this.size + e.x;
+      if (e.kind === "unit") return visSet.has(packed);
+      return visSet.has(packed) || expSet!.has(packed);
+    };
+    this.lastEntities = Object.values(state.entities).filter(canSee);
 
     const seen = new Set<number>();
     this.gatherLinks = [];
+    this.builderLinks = [];
     for (const e of this.lastEntities) {
       seen.add(e.id);
       if (e.kind === "building") this.syncBuilding(e);
       else this.syncUnit(e, snap);
-      // A worker adjacent to its gather target is visibly WORKING.
+      // A worker adjacent to its gather target is visibly WORKING (not while
+      // it walks a full load home).
       const so = e.standing_order;
       if (e.kind === "unit" && e.type === "worker" && so?.type === "gather"
-          && Array.isArray(so.target)
+          && so.phase !== "return" && Array.isArray(so.target)
           && Math.max(Math.abs(e.x - so.target[0]), Math.abs(e.y - so.target[1])) <= 1) {
         const t = this.px(so.target[0], so.target[1]);
         this.gatherLinks.push({ id: e.id, wx: t.x, wy: t.y });
+      }
+      // A worker next to the foundation it is tasked on is HAMMERING.
+      if (e.kind === "unit" && e.type === "worker" && so?.type === "build"
+          && typeof so.target_id === "number") {
+        const site = state.entities[String(so.target_id)];
+        if (site && site.build_progress) {
+          const [w, h] = BUILDING_SIZE[site.type] ?? [1, 1];
+          const near = e.x >= site.x - 1 && e.x <= site.x + w && e.y >= site.y - 1
+            && e.y <= site.y + h;
+          if (near) {
+            const c = this.px(site.x + w / 2 - 0.5, site.y + h / 2 - 0.5);
+            this.builderLinks.push({ id: e.id, sx: c.x, sy: c.y - TILE_H * 0.3 });
+          }
+        }
       }
     }
 
@@ -357,21 +504,88 @@ export class MapRenderer {
       }
     }
 
-    const fog = this.fog;
-    fog.clear();
-    if (perspective !== null && state.players[perspective]) {
-      const visible = visibleTiles(state, perspective);
-      const explored = exploredTiles(state, perspective);
-      for (let y = 0; y < this.size; y++) {
-        for (let x = 0; x < this.size; x++) {
-          const packed = y * this.size + x;
-          if (visible.has(packed)) continue;
-          const alpha = explored.has(packed) ? 0.55 : 0.94;
-          const c = this.px(x, y);
-          this.diamond(fog, c.x, c.y).fill({ color: 0x04060a, alpha });
-        }
-      }
+    if (visSet && expSet) {
+      this.updateFog(state, perspective!, expSet);
+      this.fog.visible = true;
+    } else {
+      this.fog.visible = false;
     }
+  }
+
+  // Fog canvas padding, in tiles: darkness extends PAST the map border so the
+  // unknown interior and the world beyond the edge are ONE continuous black -
+  // no cut-out diamond silhouette, no seams (MAP-VIEW-SPEC invariant 3).
+  private static readonly FOG_PAD = 10;
+
+  /** Soft round fog: opaque background-colored darkness everywhere, half
+   * lifted over explored ground, fully melted in a radial gradient around
+   * every unit/building the viewer owns (union for "all"), then blurred so
+   * no tile edge survives. */
+  private updateFog(state: GameState, perspective: number, expSet: Set<number>): void {
+    const S = 6; // fog canvas pixels per tile
+    const P = MapRenderer.FOG_PAD;
+    const n = (this.size + P * 2) * S;
+    if (!this.fogCanvas || this.fogCanvas.width !== n) {
+      this.fogCanvas = document.createElement("canvas");
+      this.fogCanvas.width = this.fogCanvas.height = n;
+      this.fogBlurCanvas = document.createElement("canvas");
+      this.fogBlurCanvas.width = this.fogBlurCanvas.height = n;
+      this.fogTex?.destroy(true);
+      this.fogTex = null;
+    }
+    const g = this.fogCanvas.getContext("2d")!;
+    g.globalCompositeOperation = "source-over";
+    g.clearRect(0, 0, n, n);
+    // Fully opaque and the SAME color as the app background: unknown map and
+    // off-map world become indistinguishable.
+    g.fillStyle = "#0b0f14";
+    g.fillRect(0, 0, n, n);
+    g.globalCompositeOperation = "destination-out";
+    // Explored ground: lift part of the darkness (dim memory of the terrain).
+    g.fillStyle = "rgba(0,0,0,0.5)";
+    for (const packed of expSet) {
+      const x = packed % this.size;
+      const y = Math.floor(packed / this.size);
+      g.fillRect((x + P) * S, (y + P) * S, S, S);
+    }
+    // Current vision: a round soft LIGHT around every eye the viewer owns.
+    const owners = new Set<number>(perspective === PERSPECTIVE_ALL
+      ? state.players.map((p) => p.id) : [perspective]);
+    for (const e of Object.values(state.entities)) {
+      if (!owners.has(e.owner)) continue;
+      const oracle = state.players[e.owner]?.lineage === "oracle" ? 2 : 0;
+      const [w, h] = e.kind === "unit" ? [1, 1] : BUILDING_SIZE[e.type] ?? [1, 1];
+      const vis = (e.kind === "unit"
+        ? UNIT_VISION[e.type] ?? 3 : BUILDING_VISION[e.type] ?? 2) + oracle;
+      const cx = (e.x + P + w / 2) * S;
+      const cy = (e.y + P + h / 2) * S;
+      const r = (vis + 0.6) * S;
+      const grad = g.createRadialGradient(
+        cx, cy, Math.max(1, (vis - 1.4) * S), cx, cy, r);
+      grad.addColorStop(0, "rgba(0,0,0,1)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grad;
+      g.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+    // Blur the whole mask by ~1.5 tiles: the explored area's tile staircase
+    // melts into round, organic light borders (MAP-VIEW-SPEC invariant 3).
+    const bg = this.fogBlurCanvas!.getContext("2d")!;
+    bg.clearRect(0, 0, n, n);
+    bg.filter = `blur(${Math.round(S * 1.5)}px)`;
+    bg.drawImage(this.fogCanvas, 0, 0);
+    bg.filter = "none";
+    if (!this.fogTex) {
+      this.fogTex = Texture.from(this.fogBlurCanvas!);
+      this.fogTex.source.scaleMode = "linear"; // smooth upscale, no pixel steps
+      this.fog.texture = this.fogTex;
+    } else {
+      this.fogTex.source.update();
+    }
+    // Map the padded grid-space canvas onto the isometric world.
+    this.fog.setFromMatrix(new Matrix(
+      TILE_W / (2 * S), TILE_H / (2 * S),
+      -TILE_W / (2 * S), TILE_H / (2 * S),
+      this.worldW / 2, -P * TILE_H));
   }
 
   // ------------------------------------------------------------------ ticker
@@ -402,7 +616,10 @@ export class MapRenderer {
       const moving = p.dur > 0 && now - p.t0 < p.dur;
       if (moving) {
         const k = (now - p.t0) / p.dur;
-        const e = k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2;
+        // Long glides run LINEAR (constant speed turn after turn = a smooth
+        // march); only short hops keep the ease-in-out.
+        const e = p.dur > 900 ? k
+          : k < 0.5 ? 2 * k * k : 1 - ((-2 * k + 2) ** 2) / 2;
         p.root.x = p.fx + (p.tx - p.fx) * e;
         p.root.y = p.fy + (p.ty - p.fy) * e;
       } else if (p.root.x !== p.tx || p.root.y !== p.ty) {
@@ -468,6 +685,29 @@ export class MapRenderer {
       const sy = link.wy + (wy - link.wy) * t;
       ind.circle(sx, sy, 1.8).fill({ color: 0xffe082, alpha: 0.9 });
       ind.circle(sx, sy, 3.4).fill({ color: 0xe6c352, alpha: 0.25 });
+    }
+    // Construction: a hammer-blow spark burst from every builder onto its
+    // site, on a per-worker rhythm, so crews visibly BUILD (AoE2 villagers
+    // swing at foundations; the building rises with the blows).
+    for (const link of this.builderLinks) {
+      const p = this.puppets.get(link.id);
+      if (!p || p.dying !== null) continue;
+      const beat = ((now / 520 + link.id * 0.41) % 1);
+      const wx = p.root.x, wy = p.root.y - 2;
+      const hx = wx + (link.sx - wx) * 0.45;
+      const hy = wy + (link.sy - wy) * 0.45;
+      ind.moveTo(wx, wy).lineTo(hx, hy)
+        .stroke({ width: 1.2, color: 0xffb020, alpha: 0.18 + 0.25 * (1 - beat) });
+      if (beat < 0.35) {
+        const k = beat / 0.35;
+        for (let i = 0; i < 4; i++) {
+          const ang = (link.id + i) * 1.57 + i * 0.5;
+          const r = 2 + k * 7;
+          ind.moveTo(hx, hy).lineTo(hx + Math.cos(ang) * r, hy + Math.sin(ang) * r * 0.55)
+            .stroke({ width: 1.2, color: 0xffd27a, alpha: 1 - k });
+        }
+        ind.circle(hx, hy, 2 * (1 - k)).fill({ color: 0xffffff, alpha: 1 - k });
+      }
     }
   }
 
@@ -549,6 +789,70 @@ export class MapRenderer {
       return;
     }
 
+    if (type === "deposit") {
+      // The economy made visible: a +N floater rises over the drop-off in the
+      // resource's color (AoE2's resource counters ticking up, at the place).
+      const x = ev.x as number, y = ev.y as number;
+      if (typeof x !== "number") return;
+      const c = this.px(x, y);
+      const energy = (ev.energy as number) ?? 0;
+      const metal = (ev.metal as number) ?? 0;
+      const color = metal >= energy ? 0xaab4c4 : 0x3ddc97;
+      const amount = Math.max(energy, metal);
+      const seed = ((ev.unit as number) ?? 0) % 7;
+      this.addEffect(1100, (g, k) => {
+        const yy = c.y - TILE_H * 0.6 - k * TILE_H * 0.9;
+        const a = k < 0.7 ? 0.95 : 0.95 * (1 - (k - 0.7) / 0.3);
+        const w = 3 + Math.min(6, amount / 5);
+        g.roundRect(c.x - w / 2 + seed - 3, yy - 2, w, 3.5, 1).fill({ color, alpha: a });
+        g.rect(c.x - w / 2 + seed - 3, yy - 2, w * 0.35, 1).fill({ color: 0xffffff, alpha: a * 0.6 });
+        g.circle(c.x + seed - 3, yy + 3, 1.2).fill({ color, alpha: a * 0.5 });
+      }, seed * 40);
+      return;
+    }
+
+    if (type === "site_placed") {
+      // A foundation dropped: a pulse of the footprint in the owner's color.
+      const c = this.px(ev.x as number, ev.y as number);
+      const owner = typeof ev.player === "number" ? ev.player : -1;
+      const color = owner >= 0 ? PLAYER_TINTS[owner % 4] : 0xdddddd;
+      this.addEffect(900, (g, k) => {
+        const r = TILE_W * (0.4 + 0.5 * k);
+        g.ellipse(c.x + TILE_W * 0.25, c.y + TILE_H * 0.25, r, r * 0.5)
+          .stroke({ width: 2, color, alpha: 0.8 * (1 - k) });
+      });
+      return;
+    }
+
+    if (type === "built" || type === "core_founded") {
+      // The building pops to life; founding a city gets the big ring.
+      const c = this.px(ev.x as number, ev.y as number);
+      const owner = typeof ev.player === "number" ? ev.player : -1;
+      const color = owner >= 0 ? PLAYER_TINTS[owner % 4] : 0xdddddd;
+      const big = type === "core_founded";
+      this.addEffect(big ? 1800 : 700, (g, k) => {
+        const r = TILE_W * (big ? 0.8 + 1.6 * k : 0.5 + 0.5 * k);
+        g.ellipse(c.x + TILE_W * 0.25, c.y + TILE_H * 0.25, r, r * 0.5)
+          .stroke({ width: big ? 3 : 2, color, alpha: 0.9 * (1 - k) });
+        if (big) {
+          g.ellipse(c.x + TILE_W * 0.25, c.y + TILE_H * 0.25, r * 0.6, r * 0.3)
+            .stroke({ width: 1.5, color: 0xffffff, alpha: 0.5 * (1 - k) });
+        }
+      });
+      return;
+    }
+
+    if (type === "pod_depleted" || type === "vein_depleted") {
+      // The bushes are gone: a small puff where the tile turned to plain.
+      const c = this.px(ev.x as number, ev.y as number);
+      const color = type === "pod_depleted" ? 0x3ddc97 : 0xe6c352;
+      this.addEffect(600, (g, k) => {
+        g.ellipse(c.x, c.y, TILE_W * 0.3 * (1 + k), TILE_H * 0.3 * (1 + k))
+          .stroke({ width: 1.5, color, alpha: 0.7 * (1 - k) });
+      });
+      return;
+    }
+
     if (type === "unit_killed") {
       const x = ev.x as number, y = ev.y as number;
       if (typeof x !== "number") return;
@@ -621,6 +925,7 @@ export class MapRenderer {
       root, sprite, under, status, kind: e.kind, type: e.type, owner: e.owner,
       big: e.type === "colossus" || e.type === "walking_tower",
       fx: 0, fy: 0, tx: 0, ty: 0, t0: 0, dur: 0, facing: 1,
+      gx: -1, gy: -1, dir: "s", mirror: false,
       frames: [], framesKey: "", frameIx: 0, frameAcc: 0, dying: null, hitAt: 0,
     };
     this.puppets.set(id, p);
@@ -628,19 +933,44 @@ export class MapRenderer {
   }
 
   private refreshFrames(p: Puppet): void {
-    const key = `${p.type}:${p.owner}:${packReady()}`;
+    const key = `${p.type}:${p.owner}:${packReady()}:${p.dir}`;
     if (key === p.framesKey) return;
     p.framesKey = key;
     p.frames = p.kind === "unit"
-      ? getUnitFrames(p.type, p.owner)
+      ? getUnitFrames(p.type, p.owner, p.dir)
       : getBuildingFrames(p.type, p.owner);
-    p.frameIx = 0;
-    p.sprite.texture = p.frames[0];
+    p.frameIx = p.frameIx % p.frames.length;
+    p.sprite.texture = p.frames[p.frameIx];
+  }
+
+  /** 8-way heading from a grid move, in SCREEN space (iso: screen-x ~ gx-gy,
+   * screen-y ~ gx+gy). Returns the texture pose + whether to mirror (left). */
+  private static heading(dgx: number, dgy: number): { dir: string; mirror: boolean } {
+    const sx2 = dgx - dgy;
+    const sy2 = dgx + dgy;
+    const octant = Math.round(Math.atan2(sy2, sx2) / (Math.PI / 4)) & 7;
+    return [
+      { dir: "e", mirror: false },   // 0
+      { dir: "se", mirror: false },  // 1
+      { dir: "s", mirror: false },   // 2
+      { dir: "se", mirror: true },   // 3 sw
+      { dir: "e", mirror: true },    // 4 w
+      { dir: "ne", mirror: true },   // 5 nw
+      { dir: "n", mirror: false },   // 6
+      { dir: "ne", mirror: false },  // 7
+    ][octant];
   }
 
   private syncUnit(e: EntityOut, snap: boolean): void {
     const p = this.puppets.get(e.id) ?? this.makePuppet(e.id, e);
     p.dying = null;
+    // Heading -> one of 8 poses (front, back, profile, quarter turns).
+    if (p.gx >= 0 && (p.gx !== e.x || p.gy !== e.y)) {
+      const h = MapRenderer.heading(e.x - p.gx, e.y - p.gy);
+      p.dir = h.dir;
+      p.mirror = h.mirror;
+    }
+    p.gx = e.x; p.gy = e.y;
     this.refreshFrames(p);
 
     // Upright billboard standing on the diamond, like an AoE2 sprite.
@@ -656,16 +986,15 @@ export class MapRenderer {
       p.tx = cx; p.ty = cy; p.fx = cx; p.fy = cy; p.dur = 0;
       p.root.x = cx; p.root.y = cy;
     } else if (cx !== p.tx || cy !== p.ty) {
-      const dx = cx - p.tx;
-      if (dx !== 0) p.facing = dx > 0 ? 1 : -1;
       p.fx = p.root.x; p.fy = p.root.y;
       p.tx = cx; p.ty = cy;
       p.t0 = performance.now();
-      p.dur = MOVE_MS;
+      // One glide = one turn: the unit is still arriving when the next state
+      // lands, so multi-turn marches read as ONE continuous walk.
+      p.dur = Math.max(MOVE_MS, this.turnMs * 0.96);
     }
-    if (unitFacesRight(p.type)) {
-      p.sprite.scale.x = Math.abs(p.sprite.scale.x) * p.facing;
-    }
+    // Left-facing poses are the mirrored right-facing textures.
+    p.sprite.scale.x = Math.abs(p.sprite.scale.x) * (p.mirror ? -1 : 1);
     p.root.zIndex = (e.x + e.y) * 10 + 5;
     p.root.alpha = e.stiff ? 0.4 : 1;
 
@@ -683,7 +1012,25 @@ export class MapRenderer {
       g.rect(-span * 0.24, -span * 0.55, span * 0.48, span * 0.14)
         .fill({ color: 0x90caf9, alpha: 0.9 });
     }
-    this.hpBarOn(g, -span * 0.35, span * 0.42, span * 0.7, e.hp,
+    // Cargo: a worker carrying energy (green cell) or metal (steel crate) shows
+    // it on its back - AoE2 villagers visibly haul what they gathered.
+    const cargo = (e.cargo_e ?? 0) + (e.cargo_m ?? 0);
+    if (cargo > 0) {
+      const k = Math.min(1, cargo / CARRY_CAPACITY);
+      const cw = span * (0.16 + 0.12 * k);
+      const color = (e.cargo_m ?? 0) >= (e.cargo_e ?? 0) ? 0xaab4c4 : 0x3ddc97;
+      g.roundRect(span * 0.18, -span * 0.12, cw, cw * 0.8, 1.5)
+        .fill({ color, alpha: 0.95 }).stroke({ width: 1, color: 0x181425, alpha: 0.9 });
+      g.rect(span * 0.18 + 1.5, -span * 0.12 + 1.5, cw * 0.4, 1.2)
+        .fill({ color: 0xffffff, alpha: 0.6 });
+      if (e.standing_order?.phase === "return") {
+        // heading home with a full load: a small arrow over the crate
+        g.moveTo(span * 0.3, -span * 0.22).lineTo(span * 0.3, -span * 0.34)
+          .stroke({ width: 1.5, color: 0xffe082, alpha: 0.9 });
+      }
+    }
+    // HP bar ABOVE the head, AoE2-style.
+    this.hpBarOn(g, -span * 0.35, -span * 0.62, span * 0.7, e.hp,
                  UNIT_MAX_HP[e.type] ?? 30);
   }
 
@@ -702,7 +1049,12 @@ export class MapRenderer {
     p.tx = cx; p.ty = cy; p.fx = cx; p.fy = cy; p.dur = 0;
     p.root.x = cx; p.root.y = cy;
     p.root.zIndex = (e.x + w - 1 + e.y + h - 1) * 10;
-    p.root.alpha = e.build_progress ? 0.45 : 1;
+    // Foundations rise with the work done (AoE2's three construction stages):
+    // ghosted at 0%, solid when complete.
+    const total = e.build_total ?? 0;
+    const done = e.build_progress && total > 0
+      ? Math.max(0, Math.min(1, 1 - e.build_progress / total)) : 1;
+    p.root.alpha = e.build_progress ? 0.35 + 0.5 * done : 1;
 
     const footW = ((w + h) / 2) * TILE_W;
     const footY = span * 0.2;
@@ -725,7 +1077,20 @@ export class MapRenderer {
 
     const g = p.status;
     g.clear();
-    if (e.type === "core") {
+    if (e.build_progress) {
+      // Construction site: scaffold poles + an amber progress bar (AoE2 draws
+      // the building rising in stages; the bar says how many work points are in).
+      const poleH = span * 0.5 * (0.4 + 0.6 * done);
+      for (const [px, py] of [[-footW * 0.42, footY * 0.5], [footW * 0.42, footY * 0.5],
+                              [0, -footY * 0.3]] as const) {
+        g.rect(px - 1, py - poleH, 2, poleH).fill({ color: 0xd8a54a, alpha: 0.9 });
+        g.rect(px - 5, py - poleH, 10, 1.5).fill({ color: 0xd8a54a, alpha: 0.8 });
+      }
+      g.rect(-footW * 0.3, -span * 0.62, footW * 0.6, 3.5).fill(0x1a1f2a);
+      g.rect(-footW * 0.3, -span * 0.62, footW * 0.6 * done, 3.5).fill(0xffb020);
+      g.rect(-footW * 0.3, -span * 0.62, footW * 0.6, 3.5)
+        .stroke({ width: 1, color: 0xffd27a, alpha: 0.7 });
+    } else if (e.type === "core") {
       // Death stages: warning ring below 300 hp, fire below 150.
       if (e.hp <= 150) {
         g.ellipse(0, footY, footW * 0.52, footW * 0.26)
@@ -747,37 +1112,40 @@ export class MapRenderer {
 
   // ----------------------------------------------------------------- terrain
 
-  /** Diamond terrain + patchwork + grid + scrap; redrawn only when it changes. */
-  private renderTerrain(state: GameState): void {
-    const key = `${state.size}:${state.tiles.flat().join("")}:${Object.keys(state.scrap).join(",")}`;
+  /** Diamond terrain + patchwork + grid + scrap; redrawn only when it changes.
+   * With fog active, the decorative dead land outside the map is NOT drawn:
+   * beyond the edge there is only the same darkness as unexplored ground. */
+  private renderTerrain(state: GameState, fogged: boolean): void {
+    const key = `${state.size}:${fogged}:${state.tiles.flat().join("")}:${Object.keys(state.scrap).join(",")}`;
     if (key === this.terrainKey) return;
     this.terrainKey = key;
     const g = this.terrain;
     g.clear();
     const size = state.size;
 
-    // Seamless world: the ground outside the playable area is drawn with the
-    // EXACT same palette, patchwork and haze as the inside, so no edge or
-    // diamond silhouette is ever visible - the screen is always a full
-    // rectangle of terrain. (Sparse ruins hint that out there is dead land.)
+    // Seamless world (god view only): the ground outside the playable area is
+    // drawn with the same palette and haze as the inside, so no edge or
+    // diamond silhouette is visible. (Sparse ruins hint at dead land.)
     const M = Math.ceil(size / 2) + 2;
-    for (let ty = -M; ty < size + M; ty++) {
-      for (let tx = -M; tx < size + M; tx++) {
-        if (tx >= 0 && tx < size && ty >= 0 && ty < size) continue;
-        const c = this.px(tx, ty);
-        if (c.x < -TILE_W || c.x > this.worldW + TILE_W) continue;
-        if (c.y < -TILE_H || c.y > this.worldH + TILE_H * 2) continue;
-        const depth = Math.min(1, Math.max(0, (tx + ty) / (2 * (size - 1))));
-        const f = 0.82 + depth * 0.34;
-        const n = ((tx * 37 + ty * 71) % 97 + 97) % 97;
-        const raw = PLAIN_SHADES[((tx * 7 + ty * 13 + ((tx * tx + ty) >> 1)) % PLAIN_SHADES.length
-                                 + PLAIN_SHADES.length) % PLAIN_SHADES.length];
-        this.diamond(g, c.x, c.y).fill(shade(raw, f));
-        if (n === 13) { // collapsed slab out in the dead land
-          g.rect(c.x - 7, c.y - 3, 13, 5).fill(shade(0x2c333e, f));
-          g.rect(c.x - 3, c.y - 6, 6, 3).fill(shade(0x1c222d, f));
-        } else if (n % 13 === 4) {
-          g.rect(c.x - 2, c.y - 1, 3, 2).fill(shade(0x232b38, f));
+    if (!fogged) {
+      for (let ty = -M; ty < size + M; ty++) {
+        for (let tx = -M; tx < size + M; tx++) {
+          if (tx >= 0 && tx < size && ty >= 0 && ty < size) continue;
+          const c = this.px(tx, ty);
+          if (c.x < -TILE_W || c.x > this.worldW + TILE_W) continue;
+          if (c.y < -TILE_H || c.y > this.worldH + TILE_H * 2) continue;
+          const depth = Math.min(1, Math.max(0, (tx + ty) / (2 * (size - 1))));
+          const f = 0.82 + depth * 0.34;
+          const n = ((tx * 37 + ty * 71) % 97 + 97) % 97;
+          const raw = PLAIN_SHADES[((tx * 7 + ty * 13 + ((tx * tx + ty) >> 1)) % PLAIN_SHADES.length
+                                   + PLAIN_SHADES.length) % PLAIN_SHADES.length];
+          this.diamond(g, c.x, c.y).fill(shade(raw, f));
+          if (n === 13) { // collapsed slab out in the dead land
+            g.rect(c.x - 7, c.y - 3, 13, 5).fill(shade(0x2c333e, f));
+            g.rect(c.x - 3, c.y - 6, 6, 3).fill(shade(0x1c222d, f));
+          } else if (n % 13 === 4) {
+            g.rect(c.x - 2, c.y - 1, 3, 2).fill(shade(0x232b38, f));
+          }
         }
       }
     }
@@ -808,6 +1176,16 @@ export class MapRenderer {
           g.rect(c.x + 3, c.y + 1, 5, 4).fill(0xe6c352);
           g.rect(c.x - 3, c.y + 4, 4, 3).fill(0x9a7b1c);
           g.rect(c.x + 6, c.y - 5, 2, 2).fill(0xfff3c0);
+        } else if (terrain === "pod") {
+          // A cluster of capsules half-buried in the ground, each with a
+          // faint green life-light: the humans the machines farm for energy.
+          for (const [dx, dy, w, h] of [[-11, -3, 7, 9], [-2, -6, 7, 10], [6, -2, 6, 8]] as const) {
+            g.roundRect(c.x + dx, c.y + dy, w, h, 3).fill(0x2b4d44)
+              .stroke({ width: 1, color: 0x0f1a17, alpha: 0.9 });
+            g.rect(c.x + dx + 2, c.y + dy + 2, w - 4, h - 5).fill({ color: 0x3ddc97, alpha: 0.55 });
+            g.rect(c.x + dx + 3, c.y + dy + 3, 1, 2).fill({ color: 0xd9ffe9, alpha: 0.9 });
+          }
+          g.ellipse(c.x, c.y + 6, 12, 3).fill({ color: 0x3ddc97, alpha: 0.12 });
         } else if (terrain === "rubble") {
           g.rect(c.x - 8, c.y - 2, 8, 4).fill(0x574634);
           g.rect(c.x + 2, c.y + 2, 6, 3).fill(0x6b5540);
@@ -822,11 +1200,13 @@ export class MapRenderer {
       x: (a - b) * (TILE_W / 2) + this.worldW / 2,
       y: (a + b) * (TILE_H / 2),
     });
-    for (let i = -M; i <= size + M; i++) {
-      const a1 = corner(i, -M), a2 = corner(i, size + M);
+    const L = fogged ? 0 : -M;          // fogged: the grid stops at the edge
+    const R = fogged ? size : size + M;
+    for (let i = L; i <= R; i++) {
+      const a1 = corner(i, L), a2 = corner(i, R);
       g.moveTo(a1.x, a1.y).lineTo(a2.x, a2.y)
         .stroke({ width: 1, color: 0xffffff, alpha: 0.05 });
-      const b1 = corner(-M, i), b2 = corner(size + M, i);
+      const b1 = corner(L, i), b2 = corner(R, i);
       g.moveTo(b1.x, b1.y).lineTo(b2.x, b2.y)
         .stroke({ width: 1, color: 0xffffff, alpha: 0.05 });
     }

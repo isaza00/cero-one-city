@@ -12,8 +12,14 @@ from cero_engine import rules
 from cero_engine.fog import entity_visible_to, visible_tiles
 from cero_engine.orders import has_truce
 from cero_engine.state import Entity, State, tk
-from cero_engine.stats import (is_combat_unit, turret_attack, turret_range,
-                               unit_armor, unit_attack, unit_range)
+from cero_engine.stats import (
+    is_combat_unit,
+    turret_attack,
+    turret_range,
+    unit_armor,
+    unit_attack,
+    unit_range,
+)
 
 
 def combat_phase(state: State, ctx) -> None:
@@ -82,6 +88,8 @@ def combat_phase(state: State, ctx) -> None:
                 continue
             if e.owner < 0 and e.type == "camp":
                 continue  # turrets do not pick fights with neutral camps
+            if e.type == "wall":
+                continue  # a turret never wastes shots on a palisade
             if not _in_range(turret, e, rng):
                 continue
             if e.is_unit and not entity_visible_to(state, e, turret.owner,
@@ -117,6 +125,8 @@ def _auto_target(state: State, unit: Entity, vision_of) -> Entity | None:
             continue  # stances never pick fights with neutral camps
         if has_truce(state, unit.owner, e.owner):
             continue
+        if e.type == "wall":
+            continue  # walls only fall to explicit attack orders
         if not _in_range(unit, e, rng):
             continue
         if e.is_unit and not entity_visible_to(state, e, unit.owner,
@@ -288,10 +298,12 @@ def _process_death(state: State, ctx, e: Entity) -> None:
         return
 
     if e.type == "core":
-        ctx.eliminated_now.setdefault(e.owner, "core")
+        # Elimination is decided at closing: a city dies with its LAST core
+        # (a second core, AoE2 Castle Age style, keeps the player alive).
         if credit is not None and credit != e.owner:
             state.players[credit].core_kills += 1
-        ctx.emit(type="core_destroyed", player=e.owner, by=credit)
+        ctx.emit(type="core_destroyed", player=e.owner, by=credit, x=e.x, y=e.y,
+                 site=bool(e.build_progress))
         for x, y in footprint:
             state.tiles[y][x] = "rubble"
         return

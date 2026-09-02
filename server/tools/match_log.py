@@ -18,7 +18,7 @@ from collections import Counter, defaultdict
 
 from sqlalchemy import select
 
-from app.db.models import Match, MatchPlayer, Agent, Turn
+from app.db.models import Agent, Match, MatchPlayer, Turn
 from app.db.session import session_factory
 
 

@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cero_engine import rules
+from cero_engine import rules, stats
 from cero_engine.state import Entity, State
 
 ORDER_TYPES = ("move", "attack", "attack_move", "gather", "build", "repair", "produce",
-               "research", "diplomacy", "capture", "fuse", "recruit", "stop")
+               "research", "rally", "diplomacy", "capture", "fuse", "recruit", "stop")
 DIPLO_ACTIONS = ("propose_truce", "accept_truce", "break_truce",
                  "propose_joint_attack", "accept_joint_attack")
 
@@ -84,6 +84,17 @@ def validate_orders(state: State, player_id: int, raw_orders: list,
     return intake, errors
 
 
+def _xy(value) -> tuple[int, int] | None:
+    if (isinstance(value, list) and len(value) == 2
+            and all(isinstance(v, int) and not isinstance(v, bool) for v in value)):
+        return value[0], value[1]
+    return None
+
+
+def has_finished_building(state: State, pid: int, btype: str) -> bool:
+    return any(b.type == btype and not b.build_progress for b in state.buildings_of(pid))
+
+
 def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
                   intake: Intake, errors: list[dict]) -> bool:
     pid = player.id
@@ -92,13 +103,22 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
         if actor.is_unit:
             actor.standing_order = None
             return True
-        actor.production = actor.production  # buildings: stop clears queued research/production
+        # Buildings: cancel the running job and refund it (AoE2 cancel button).
+        if actor.production is not None:
+            e, m = stats.unit_cost(player, actor.production["unit"])
+            player.energy += e
+            player.metal += m
+            actor.production = None
+        if actor.research is not None:
+            e, m = stats.tech_cost(player, actor.research["tech"])
+            player.energy += e
+            player.metal += m
+            actor.research = None
         return True
 
     if otype == "move":
-        to = order.get("to")
-        if (not actor.is_unit or not isinstance(to, list) or len(to) != 2
-                or not all(isinstance(v, int) for v in to) or not state.in_bounds(*to)):
+        to = _xy(order.get("to"))
+        if not actor.is_unit or to is None or not state.in_bounds(*to):
             _err(errors, actor.id, otype, "bad_target", "move needs an in-bounds [x,y]")
             return False
         if actor.type == "watcher" or rules.UNITS[actor.type]["mov"] > 0:
@@ -108,9 +128,8 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
         return False
 
     if otype == "attack_move":
-        to = order.get("to")
-        if (not actor.is_unit or not isinstance(to, list) or len(to) != 2
-                or not all(isinstance(v, int) for v in to) or not state.in_bounds(*to)):
+        to = _xy(order.get("to"))
+        if not actor.is_unit or to is None or not state.in_bounds(*to):
             _err(errors, actor.id, otype, "bad_target", "attack_move needs an in-bounds [x,y]")
             return False
         if actor.type == "watcher" or rules.UNITS[actor.type]["mov"] > 0:
@@ -137,37 +156,64 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
         return True
 
     if otype == "gather":
-        target = order.get("target")
-        if (actor.type != "worker" or not isinstance(target, list) or len(target) != 2
-                or not all(isinstance(v, int) for v in target) or not state.in_bounds(*target)):
+        target = _xy(order.get("target"))
+        if actor.type != "worker" or target is None or not state.in_bounds(*target):
             _err(errors, actor.id, otype, "bad_target", "gather needs a worker and [x,y]")
             return False
-        actor.standing_order = {"type": "gather", "target": [target[0], target[1]], "progress": 0}
+        gx, gy = target
+        terrain = state.tiles[gy][gx]
+        own_cocoon = any(e.type == "cocoon" and e.owner == pid and (e.x, e.y) == (gx, gy)
+                         for e in state.entities_sorted())
+        if (terrain not in ("vein", "pod", "rubble") and f"{gx},{gy}" not in state.scrap
+                and not own_cocoon):
+            _err(errors, actor.id, otype, "nothing_there",
+                 "gather targets a vein, pod, scrap pile, rubble or one of your cocoons")
+            return False
+        actor.standing_order = {"type": "gather", "target": [gx, gy], "phase": "work"}
         return True
 
     if otype == "repair":
         target = state.ent(order.get("target_id", -1))
         if (actor.type != "worker" or target is None or not target.is_building
-                or target.owner != pid):
-            _err(errors, actor.id, otype, "bad_target", "repair needs an own building target")
+                or target.owner != pid or target.build_progress):
+            _err(errors, actor.id, otype, "bad_target",
+                 "repair needs one of your finished buildings as target")
             return False
         actor.standing_order = {"type": "repair", "target_id": target.id}
         return True
 
     if otype == "build":
+        if actor.type != "worker":
+            _err(errors, actor.id, otype, "schema", "only workers build")
+            return False
+        target_id = order.get("target_id")
+        if target_id is not None:
+            # Join an existing construction site (AoE2: task more villagers on it).
+            site = state.ent(target_id) if isinstance(target_id, int) else None
+            if site is None or not site.is_building or site.owner != pid or not site.build_progress:
+                _err(errors, actor.id, otype, "bad_target",
+                     "build target_id must be one of your construction sites")
+                return False
+            actor.standing_order = {"type": "build", "target_id": site.id}
+            return True
         btype = order.get("building")
-        anchor = order.get("anchor")
-        if (actor.type != "worker" or btype not in rules.BUILDABLE
-                or not isinstance(anchor, list) or len(anchor) != 2
-                or not all(isinstance(v, int) for v in anchor)):
-            _err(errors, actor.id, otype, "schema", "build needs worker, building and anchor")
+        anchor = _xy(order.get("anchor"))
+        if btype not in rules.BUILDABLE or anchor is None:
+            _err(errors, actor.id, otype, "schema",
+                 f"build needs building in {list(rules.BUILDABLE)} and anchor [x,y]")
             return False
         spec = rules.BUILDINGS[btype]
         if not rules.firmware_at_least(player.firmware, spec.get("requires_fw")):
-            _err(errors, actor.id, otype, "need_firmware", f"{btype} requires firmware v2")
+            _err(errors, actor.id, otype, "need_firmware",
+                 f"{btype} requires firmware {spec['requires_fw']}")
             return False
         if btype == "turret" and player.lineage == "parasite":
             _err(errors, actor.id, otype, "lineage", "parasite cannot build turrets")
+            return False
+        if btype == "core" and any(b.type == "core" for b in state.buildings_of(pid)) \
+                and not rules.firmware_at_least(player.firmware, rules.EXTRA_CORE_REQUIRES_FW):
+            _err(errors, actor.id, otype, "need_firmware",
+                 f"a second core requires firmware {rules.EXTRA_CORE_REQUIRES_FW}")
             return False
         ax, ay = anchor
         occ = state.occupancy()
@@ -177,14 +223,13 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
                 x, y = ax + dx, ay + dy
                 if not state.in_bounds(x, y) or state.tiles[y][x] != "plain" \
                         or (x, y) in occ or f"{x},{y}" in state.scrap:
-                    _err(errors, actor.id, otype, "bad_site", "footprint must be free plain tiles")
+                    _err(errors, actor.id, otype, "bad_site",
+                         "footprint must be free plain tiles (no units, buildings, "
+                         "veins, pods, rubble or scrap)")
                     return False
                 if (y * state.size + x) not in explored:
                     _err(errors, actor.id, otype, "unexplored", "footprint must be explored")
                     return False
-        if max(abs(actor.x - ax), abs(actor.y - ay)) > 1:
-            _err(errors, actor.id, otype, "not_adjacent", "worker must be adjacent to the anchor")
-            return False
         intake.build.append((actor.id, btype, ax, ay))
         return True
 
@@ -216,7 +261,8 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
             return False
         spec = rules.TECHS[tech]
         if spec["at"] != actor.type:
-            _err(errors, actor.id, otype, "wrong_building", f"{tech} is researched elsewhere")
+            _err(errors, actor.id, otype, "wrong_building",
+                 f"{tech} is researched at the {spec['at']}")
             return False
         if tech in player.techs:
             _err(errors, actor.id, otype, "already", "tech already researched")
@@ -224,6 +270,10 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
         if any(req not in player.techs for req in spec["requires"]):
             _err(errors, actor.id, otype, "requires", "missing prerequisite tech")
             return False
+        for req in spec.get("requires_buildings", ()):
+            if not has_finished_building(state, pid, req):
+                _err(errors, actor.id, otype, "requires", f"{tech} needs a finished {req}")
+                return False
         if spec.get("requires_racks"):
             racks = sum(1 for b in state.buildings_of(pid)
                         if b.type == "rack" and not b.build_progress)
@@ -237,6 +287,20 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
         if any(b == actor.id for b, _ in intake.research):
             return False
         intake.research.append((actor.id, tech))
+        return True
+
+    if otype == "rally":
+        if not actor.is_building or actor.type not in rules.PRODUCERS or actor.build_progress:
+            _err(errors, actor.id, otype, "bad_target", "rally needs a finished core or assembler")
+            return False
+        if order.get("to") is None:
+            actor.rally = None
+            return True
+        to = _xy(order.get("to"))
+        if to is None or not state.in_bounds(*to):
+            _err(errors, actor.id, otype, "bad_target", "rally needs an in-bounds [x,y] or null")
+            return False
+        actor.rally = [to[0], to[1]]
         return True
 
     if otype == "capture":

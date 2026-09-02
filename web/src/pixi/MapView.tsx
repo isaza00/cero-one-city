@@ -12,7 +12,14 @@ import { MapRenderer } from "./MapRenderer";
 export interface MapController {
   getViewFrac(): { x: number; y: number; w: number; h: number } | null;
   centerOnFrac(fx: number, fy: number): void;
+  getViewTileQuad(): { tx: number; ty: number }[] | null;
+  centerOnTile(tx: number, ty: number): void;
   select(id: number | null): void;
+  flashOrder(playerIndex: number, groups: {
+    actor_ids?: number[];
+    target?: { id?: number; x?: number; y?: number; kind?: string } | null;
+    action?: string;
+  }[]): void;
 }
 
 export default function MapView({ state, perspective = null, sizePx = 640, fill = false,
@@ -38,7 +45,11 @@ export default function MapView({ state, perspective = null, sizePx = 640, fill 
       controller.current = {
         getViewFrac: () => rendererRef.current?.getViewFrac() ?? null,
         centerOnFrac: (fx, fy) => rendererRef.current?.centerOnFrac(fx, fy),
+        getViewTileQuad: () => rendererRef.current?.getViewTileQuad() ?? null,
+        centerOnTile: (tx, ty) => rendererRef.current?.centerOnTile(tx, ty),
         select: (id) => rendererRef.current?.select(id),
+        flashOrder: (p, groups) => rendererRef.current?.flashOrder(
+          p, groups.map((g) => ({ ...g, target: g.target ?? undefined }))),
       };
     }
     const host = hostRef.current;

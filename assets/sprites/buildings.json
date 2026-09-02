@@ -19,6 +19,12 @@
       "cell": 64,
       "frames": 2
     },
+    "lab": {
+      "x": 256,
+      "y": 0,
+      "cell": 64,
+      "frames": 2
+    },
     "cocoon": {
       "x": 0,
       "y": 64,
@@ -39,6 +45,18 @@
     },
     "camp": {
       "x": 192,
+      "y": 64,
+      "cell": 32,
+      "frames": 2
+    },
+    "depot": {
+      "x": 256,
+      "y": 64,
+      "cell": 32,
+      "frames": 2
+    },
+    "wall": {
+      "x": 320,
       "y": 64,
       "cell": 32,
       "frames": 2
