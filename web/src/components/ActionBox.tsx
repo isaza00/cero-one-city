@@ -84,8 +84,8 @@ function Portrait({ type, owner, lineage, ring }: {
   return (
     <span className="abx-portrait" style={ring ? { borderColor: ring } : undefined}>
       {IS_BUILDING.has(type)
-        ? <BuildingIcon type={type} owner={owner} size={38} />
-        : <LineageAvatar lineage={lineage} unit={type} size={38} />}
+        ? <BuildingIcon type={type} owner={owner} size={48} />
+        : <LineageAvatar lineage={lineage} unit={type} size={48} />}
     </span>
   );
 }
@@ -98,7 +98,7 @@ const TERRAIN_TITLE: Record<string, string> = {
 
 /** Pixel-style portrait of a gather target: what the tile IS, not a word. */
 function TerrainPortrait({ terrain }: { terrain: string }) {
-  const s = { width: 38, height: 38, display: "block" } as const;
+  const s = { width: 48, height: 48, display: "block" } as const;
   let art: ReactElement;
   switch (terrain) {
     case "vein":
@@ -164,12 +164,22 @@ function Target({ t, lineages }: {
   if (t.kind === "terrain") {
     if (t.terrain === "cocoon") {
       return <span className="abx-portrait" title="cocoon farm (energy)">
-        <BuildingIcon type="cocoon" owner={-1} size={38} /></span>;
+        <BuildingIcon type="cocoon" owner={-1} size={48} /></span>;
     }
     return <TerrainPortrait terrain={t.terrain ?? "field"} />;
   }
   if (t.kind === "tile" && typeof t.x === "number") {
-    return <span className="abx-chip mono">({t.x},{t.y})</span>;
+    // A place on the map: a waypoint marker, not a pair of numbers.
+    return (
+      <span className="abx-portrait abx-tile" title={`map position (${t.x},${t.y})`}>
+        <svg width="48" height="48" viewBox="0 0 16 16" fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 12l4-2 4 2 4-2" stroke="#3a4466" strokeWidth="1.2" />
+          <path d="M2 14l4-2 4 2 4-2" stroke="#3a4466" strokeWidth="1.2" />
+          <path d="M8 11.5c2.6-2.9 3.5-4.4 3.5-6A3.5 3.5 0 004.5 5.5c0 1.6.9 3.1 3.5 6z" fill="#ff8a3d" stroke="#181425" strokeWidth="0.8" />
+          <circle cx="8" cy="5.5" r="1.3" fill="#181425" />
+        </svg>
+      </span>
+    );
   }
   if ((t.kind === "tech" || t.kind === "diplomacy") && t.type) {
     return <span className="abx-chip">{t.type.replace(/_/g, " ")}</span>;

@@ -136,8 +136,8 @@ function UnitCard({ entity, name, lineage, crew }: {
   return (
     <div className="hud-unitcard">
       {isUnit
-        ? <LineageAvatar lineage={lineage} unit={entity.type} size={62} />
-        : <BuildingPortrait type={entity.type} owner={entity.owner} size={62} />}
+        ? <LineageAvatar lineage={lineage} unit={entity.type} size={88} />
+        : <BuildingPortrait type={entity.type} owner={entity.owner} size={88} />}
       <div className="hud-unitcard-body">
         <strong>
           {info?.label ?? entity.type.replace(/_/g, " ")}
@@ -226,7 +226,7 @@ function CityPanel({ state, names }: { state: GameState | null; names: Map<numbe
                 return (
                   <span className="city-b" key={t}
                         title={`${BUILDING_INFO[t].label} (${BUILDING_INFO[t].aoe})`}>
-                    <BuildingPortrait type={t} owner={pl.id} size={26} />
+                    <BuildingPortrait type={t} owner={pl.id} size={40} />
                     <span className="city-count mono">×{n}</span>
                   </span>
                 );
@@ -243,7 +243,7 @@ function CityPanel({ state, names }: { state: GameState | null; names: Map<numbe
               return (
                 <div className="city-site" key={s.id}
                      title={`${BUILDING_INFO[s.type]?.label} at (${s.x},${s.y})`}>
-                  <BuildingPortrait type={s.type} owner={pl.id} size={22} />
+                  <BuildingPortrait type={s.type} owner={pl.id} size={32} />
                   <span className="city-site-name">
                     {BUILDING_INFO[s.type]?.label ?? s.type}
                     {s.type === "core" && !pl.founded && <span className="hud-site-tag"> founding</span>}
@@ -455,6 +455,14 @@ export default function LiveMatch() {
                 <span className="plate-lineage">{lineageLabel(lineages.get(1) ?? "")}</span>
               </div>
             )}
+            {players.length === 2 && (() => {
+              const a = scoreByPlayer.get(0) ?? 0, b = scoreByPlayer.get(1) ?? 0;
+              const pct = a + b > 0 ? (a / (a + b)) * 100 : 50;
+              return <div className="plate-vs" aria-hidden>
+                <div style={{ width: `${pct}%`, background: PLAYER_COLOR_CSS[0] }} />
+                <div style={{ width: `${100 - pct}%`, background: PLAYER_COLOR_CSS[1] }} />
+              </div>;
+            })()}
           </div>
           {p1 && <PlayerBlock pl={p1} name={names.get(p1.id) ?? "P1"} right
                               isMe={myPlayer?.player_index === p1.id}
@@ -538,7 +546,7 @@ export default function LiveMatch() {
           <div className="bottom-right">
             <div className="minimap-box">
               <Minimap state={data.state} controller={controller}
-                       perspective={perspective} />
+                       perspective={perspective} width={230} />
             </div>
           </div>
         </div>

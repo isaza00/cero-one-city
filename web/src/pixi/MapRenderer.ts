@@ -213,7 +213,7 @@ export class MapRenderer {
     // Default view: the whole battlefield, a notch closer than "fit" (fit
     // reads too small on wide screens); the wheel zooms between fit and 2.4x
     // and the minimap navigates when zoomed.
-    return this.fitZoom() * 1.3;
+    return this.fitZoom() * 1.55;
   }
 
   private resetCamera(): void {
