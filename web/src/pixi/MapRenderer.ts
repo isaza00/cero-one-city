@@ -198,8 +198,10 @@ export class MapRenderer {
     this.viewH = viewH;
     this.app.renderer.resize(viewW, viewH);
     if (this.worldW > 0) {
+      // A resize (the side panel growing as the match goes on) must NEVER
+      // undo the viewer's zoom: keep it, only clamp so the map still fills.
       if (!this.userCam) this.resetCamera();
-      else { this.zoom = this.modeZoom(); this.applyCamera(); }
+      else { this.zoom = Math.max(this.fitZoom(), this.zoom); this.applyCamera(); }
     }
   }
 

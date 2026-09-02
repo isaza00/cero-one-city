@@ -5,6 +5,7 @@
 // stick to the bottom unless the viewer scrolled up to read older ones.
 
 import { useEffect, useMemo, useRef } from "react";
+import type { ReactElement } from "react";
 import type { FeedLine, OrderViz, OrderVizTarget } from "../api/types";
 import { buildingDataURL, tintForIndex } from "../game/dompack";
 import { BUILDING_INFO, PLAYER_COLOR_CSS } from "../game/meta";
@@ -89,6 +90,67 @@ function Portrait({ type, owner, lineage, ring }: {
   );
 }
 
+const TERRAIN_TITLE: Record<string, string> = {
+  vein: "metal vein (gold mine)", pod: "human pods (energy: the berries)",
+  scrap: "scrap (chatarra) - metal left by dead robots", rubble: "rubble (10 metal to clear)",
+  field: "ground",
+};
+
+/** Pixel-style portrait of a gather target: what the tile IS, not a word. */
+function TerrainPortrait({ terrain }: { terrain: string }) {
+  const s = { width: 38, height: 38, display: "block" } as const;
+  let art: ReactElement;
+  switch (terrain) {
+    case "vein":
+      art = <svg style={s} viewBox="0 0 16 16" shapeRendering="crispEdges">
+        <rect width="16" height="16" fill="#2a2617" />
+        <rect x="2" y="9" width="5" height="4" fill="#c9a227" /><rect x="8" y="10" width="5" height="4" fill="#e6c352" />
+        <rect x="5" y="5" width="5" height="4" fill="#9a7b1c" /><rect x="6" y="6" width="2" height="1" fill="#fff3c0" />
+        <rect x="11" y="4" width="3" height="3" fill="#c9a227" /><rect x="12" y="4" width="1" height="1" fill="#fff3c0" />
+      </svg>;
+      break;
+    case "pod":
+      art = <svg style={s} viewBox="0 0 16 16" shapeRendering="crispEdges">
+        <rect width="16" height="16" fill="#16302a" />
+        <rect x="2" y="4" width="4" height="9" fill="#0f1a17" /><rect x="3" y="5" width="2" height="7" fill="#2b4d44" />
+        <rect x="3" y="6" width="2" height="4" fill="#3ddc97" /><rect x="3" y="6" width="1" height="1" fill="#d9ffe9" />
+        <rect x="7" y="2" width="4" height="11" fill="#0f1a17" /><rect x="8" y="3" width="2" height="9" fill="#2b4d44" />
+        <rect x="8" y="4" width="2" height="6" fill="#3ddc97" /><rect x="8" y="4" width="1" height="1" fill="#d9ffe9" />
+        <rect x="12" y="5" width="3" height="8" fill="#0f1a17" /><rect x="13" y="6" width="1" height="6" fill="#3ddc97" />
+      </svg>;
+      break;
+    case "scrap":
+      art = <svg style={s} viewBox="0 0 16 16" shapeRendering="crispEdges">
+        <rect width="16" height="16" fill="#1b2432" />
+        <rect x="2" y="10" width="12" height="3" fill="#8d99ae" /><rect x="5" y="11" width="4" height="1" fill="#39414e" />
+        <rect x="4" y="6" width="5" height="4" fill="#aab4c4" /><rect x="10" y="4" width="4" height="3" fill="#8d99ae" />
+        <rect x="6" y="3" width="3" height="3" fill="#5a6988" /><rect x="11" y="8" width="2" height="2" fill="#b86f50" />
+      </svg>;
+      break;
+    case "rubble":
+      art = <svg style={s} viewBox="0 0 16 16" shapeRendering="crispEdges">
+        <rect width="16" height="16" fill="#3a2f24" />
+        <rect x="2" y="8" width="7" height="4" fill="#574634" /><rect x="9" y="10" width="5" height="3" fill="#6b5540" />
+        <rect x="6" y="3" width="4" height="4" fill="#46392c" /><rect x="3" y="4" width="2" height="2" fill="#6b5540" />
+      </svg>;
+      break;
+    default:
+      art = <svg style={s} viewBox="0 0 16 16" shapeRendering="crispEdges">
+        <rect width="16" height="16" fill="#18202e" /><rect x="3" y="10" width="4" height="2" fill="#1f2937" />
+        <rect x="10" y="5" width="3" height="2" fill="#121826" />
+      </svg>;
+  }
+  const res = terrain === "pod" ? "energy" : terrain === "field" ? null : "metal";
+  return (
+    <span className="abx-portrait abx-terrain" title={TERRAIN_TITLE[terrain] ?? terrain}>
+      {art}
+      {res && <span className={`abx-res ${res}`}>
+        {res === "energy" ? <EnergyIcon /> : <MetalIcon />}
+      </span>}
+    </span>
+  );
+}
+
 function Target({ t, lineages }: {
   t: OrderVizTarget | null; lineages: Map<number, string>;
 }) {
@@ -100,15 +162,11 @@ function Target({ t, lineages }: {
                      ring={owner >= 0 ? PLAYER_COLOR_CSS[owner % 4] : undefined} />;
   }
   if (t.kind === "terrain") {
-    return (
-      <span className="abx-chip">
-        {t.res === "metal" ? <MetalIcon /> : t.res === "energy" ? <EnergyIcon /> : null}
-        {t.terrain === "vein" ? "vein" : t.terrain === "pod" ? "human pods"
-          : t.terrain === "cocoon" ? "cocoon farm"
-          : t.terrain === "scrap" ? "chatarra" : t.terrain === "rubble" ? "rubble"
-          : "field"}
-      </span>
-    );
+    if (t.terrain === "cocoon") {
+      return <span className="abx-portrait" title="cocoon farm (energy)">
+        <BuildingIcon type="cocoon" owner={-1} size={38} /></span>;
+    }
+    return <TerrainPortrait terrain={t.terrain ?? "field"} />;
   }
   if (t.kind === "tile" && typeof t.x === "number") {
     return <span className="abx-chip mono">({t.x},{t.y})</span>;

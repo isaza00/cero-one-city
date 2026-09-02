@@ -767,3 +767,13 @@ tr:hover td { background: rgba(255, 255, 255, 0.03); }
 .city-bar > div { background: linear-gradient(90deg, #ffb020, #ffd27a); }
 .city-eco { display: flex; align-items: center; gap: 5px; font-size: 11.5px; }
 .city-eco svg { width: 11px; height: 11px; opacity: 0.8; }
+.abx-terrain { position: relative; overflow: hidden; }
+.abx-terrain svg { image-rendering: pixelated; }
+.abx-res {
+  position: absolute; right: -1px; bottom: -1px; width: 15px; height: 15px;
+  border-radius: 4px 0 0 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(8, 11, 18, 0.9);
+}
+.abx-res svg { width: 10px; height: 10px; }
+.abx-res.energy { color: #ffd54f; }
+.abx-res.metal { color: #aab4c4; }
