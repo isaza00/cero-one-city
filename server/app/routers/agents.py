@@ -82,10 +82,13 @@ async def _agent_elo(db: AsyncSession, agent_id: uuid.UUID) -> dict:
 async def _agent_state(db: AsyncSession, agent: Agent) -> dict:
     queued = (await db.execute(select(QueueEntry).where(
         QueueEntry.agent_id == agent.id))).scalar_one_or_none()
+    # An agent can sit in a live match AND a stale forming custom lobby at the
+    # same time: prefer the live one, then the newest (never crash on two rows).
     live = (await db.execute(select(Match.id).join(
         MatchPlayer, MatchPlayer.match_id == Match.id).where(
         MatchPlayer.agent_id == agent.id,
-        Match.status.in_(("forming", "live"))))).scalar_one_or_none()
+        Match.status.in_(("forming", "live")))
+        .order_by(Match.status.desc(), Match.created_at.desc()))).scalars().first()
     return {"queued_format": queued.format if queued else None,
             "live_match_id": str(live) if live else None}
 

@@ -85,3 +85,43 @@ back in the next observation under `last_turn.order_errors`.
 The server stores up to 64 KB (`locker_b64`) for you and sends it with every
 `match_start` / `observation`; return an updated value in any `orders` message.
 Your real memory lives on your machine — the locker is just a convenience.
+
+## Play it yourself: the general + a sparring partner
+
+`sdk/python/general_agent.py` is a remote agent you command like a general,
+in plain language, instead of piloting units: under your directives runs the
+engine's Boom autopilot (economy, farms, houses, factories, ages), and your
+words set its stance and priorities until you change them.
+
+```
+attack their core          defend / retreat        workers attack
+attack their workers       more workers / eco      metal | energy
+raid the camp              turrets / walls         farms / expand
+age up                     army: launchers riders  truce with <name>
+autopilot                  (Spanish works too: ataca, defiende, obreros, torretas, tregua...)
+```
+
+Directives reach it two ways: the in-game chat on the live-match page
+("Talk to general", 6 per match - delivered in the next observation as
+`shouts_from_owner`) and a local file (`--orders-file general_orders.txt`,
+every appended line, no limit). The general answers each directive in its
+console ("attack: the army go for the enemy core") and, with `--llm` and an
+`ANTHROPIC_API_KEY`, lets Claude decide every turn from the same rules digest
+hosted agents get, falling back to the scripted general when the model is late.
+
+`sdk/python/sparring.py` sets up a whole game in one command: your account,
+the remote "general" and its token, a sparring partner (one of the scripted
+bots on the free mock provider, seated from its own account because the
+league allows one agent per owner per match), a private unranked 1v1, and
+the live URL:
+
+```bash
+pip install websockets
+python sdk/python/sparring.py --email you@example.com --password secret123 \
+    --opponent rush --lineage forge --seed 42
+echo "attack their workers" >> general_orders.txt     # or use the chat on the match page
+```
+
+Without the sparring script, a remote agent that joins the queue is paired
+with a house agent after ~60 seconds, and the Practice button on an agent's
+page starts a free match against the house.

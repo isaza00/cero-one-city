@@ -23,10 +23,10 @@ class BoomBot(Bot):
             return orders
 
         workers = len(self.units(obs, "worker"))
-        target_workers = {1: 16, 2: 22, 3: 24}[tier]
+        target_workers = self.prefs.get("workers") or {1: 16, 2: 22, 3: 24}[tier]
         # Energy pays every worker AND the upkeep of the whole army: about 45%
         # of the crew on pods/farms, re-balanced when one bank piles up.
-        energy_workers = self.energy_share(obs, 45)
+        energy_workers = self.energy_share(obs, self.prefs.get("energy_pct", 45))
         self.assign_workers(obs, orders, energy_workers)
         self.help_sites(obs, orders)
 
@@ -34,8 +34,9 @@ class BoomBot(Bot):
         labs = self.buildings(obs, "lab", finished=False)
         racks = self.buildings(obs, "rack", finished=False)
         saving_v2 = (firmware == "v1" and bool(self.buildings(obs, "assembler"))
-                     and workers >= 10)
-        saving_v3 = (firmware == "v2" and turn >= 28 and len(self.buildings(obs, "rack")) >= 2
+                     and (workers >= 10 or self.prefs.get("age_up")))
+        saving_v3 = (firmware == "v2" and (turn >= 28 or self.prefs.get("age_up"))
+                     and len(self.buildings(obs, "rack")) >= 2
                      and bool(self.buildings(obs, "lab")))
         reserve = (120, 80) if saving_v2 else (350, 250) if saving_v3 else (0, 0)
 
@@ -60,7 +61,13 @@ class BoomBot(Bot):
         # Build order: one new foundation per turn keeps the crews focused.
         # Farms come first the moment the wild pods cannot seat the energy crew.
         free_compute = res["compute_cap"] - res["compute_used"]
-        if len(self.sites(obs)) < 2:
+        want = self.prefs.pop("want", None)  # one building the coach asked for, now
+        if want and self.can(obs, "build", want):
+            core0 = self.my_core(obs)
+            near = self.front_of_base(obs, 5) if want in ("turret", "wall") else None
+            self.build_with_worker(obs, orders, want, near=near,
+                                   hug=core0 if want == "cocoon" else None, crew=2)
+        elif len(self.sites(obs)) < 2:
             core = self.my_core(obs)
             energy_slots = sum(3 for p in self.pods(obs)
                                if p.get("pod_left", 0) >= 40
@@ -100,8 +107,9 @@ class BoomBot(Bot):
                               "armor_2", "anti_air"], reserve)
 
         # Army: while banking for a firmware tier, spend only the surplus.
-        wishlist = {1: ["striker"], 2: ["launcher", "rider", "striker", "wasp"],
-                    3: ["launcher", "rider", "drone_swarm", "walking_tower", "striker"]}[tier]
+        wishlist = self.prefs.get("wishlist") or {
+            1: ["striker"], 2: ["launcher", "rider", "striker", "wasp"],
+            3: ["launcher", "rider", "drone_swarm", "walking_tower", "striker"]}[tier]
         if workers >= 8:
             self.train_army(obs, orders, wishlist, reserve)
 
@@ -109,7 +117,9 @@ class BoomBot(Bot):
         if fusing_mode:
             self.try_fuse(obs, orders)
 
-        if not self.defend(obs, orders, radius=14):
+        if self.prefs.get("hold"):
+            pass  # the coach holds the army; the general handles it
+        elif not self.defend(obs, orders, radius=14):
             exclude = ("striker",) if fusing_mode else ()
             army = self.army(obs, exclude)
             if 5 <= len(army) < 10 and self.raid_camp(obs, orders, min_army=5):

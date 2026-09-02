@@ -220,11 +220,16 @@ async def join_custom(code: str, body: JoinBody,
     needed = {"1v1": 2, "ffa3": 3, "ffa4": 4}[match.format]
     if len(players) >= needed:
         raise HTTPException(409, detail={"code": "full", "message": "match is full"})
-    # Custom matches are unranked, so self-play is allowed: the same owner may
-    # field several of their agents against each other - just not the same agent.
     if any(p.agent_id == agent.id for p in players):
         raise HTTPException(409, detail={"code": "agent_dup",
                                          "message": "that agent already joined - pick another one"})
+    # One agent per owner per match is a DB constraint (anti-collusion), custom
+    # matches included: sparring against yourself needs a second account
+    # (sdk/python/sparring.py does exactly that).
+    if any(p.owner_id == user.id for p in players):
+        raise HTTPException(409, detail={"code": "owner_dup",
+                                         "message": "one agent per owner per match - seat the "
+                                                    "opponent from another account"})
     db.add(MatchPlayer(match_id=match.id, agent_id=agent.id, owner_id=user.id,
                        player_index=len(players), lineage=agent.lineage,
                        level_snapshot=agent.level,

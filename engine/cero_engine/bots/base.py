@@ -39,6 +39,10 @@ class Bot:
         self.rng = PCG32((seed << 8) ^ (player_id + 1))
         self.failed_sites: set[tuple[int, int]] = set()
         self.scout_leg = 0
+        # Owner preferences a coach can set at runtime (the remote "general"
+        # agent fills these from plain-language directives): workers target,
+        # energy_pct, wishlist, want (a building to add now), age_up, hold.
+        self.prefs: dict = {}
 
     # ------------------------------------------------------------- observation
     def units(self, obs: dict, utype: str | None = None) -> list[dict]:
