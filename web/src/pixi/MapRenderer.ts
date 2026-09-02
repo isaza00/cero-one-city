@@ -372,6 +372,7 @@ export class MapRenderer {
         const p = this.puppets.get(id);
         if (!p || p.dying !== null) continue;
         this.addEffect(2400, (g, k) => {
+          if (p.root.destroyed) return;  // the unit died mid-flash
           const r = 12 + 2.5 * Math.sin(k * Math.PI * 6);
           const a = k < 0.8 ? 0.95 : 0.95 * (1 - (k - 0.8) / 0.2);
           g.ellipse(p.root.x, p.root.y + 8, r, r * 0.5)
@@ -386,6 +387,7 @@ export class MapRenderer {
       let cx = 0, cy = 0, ok = false;
       if (typeof t.id === "number" && this.puppets.has(t.id)) {
         const tp = this.puppets.get(t.id)!;
+        if (tp.root.destroyed) continue;
         cx = tp.root.x; cy = tp.root.y; ok = true;
       } else if (typeof t.x === "number" && typeof t.y === "number") {
         const c = this.px(t.x, t.y);
@@ -582,7 +584,21 @@ export class MapRenderer {
 
   private packWasReady = false;
 
+  private tickErrors = 0;
+
   private tick(deltaMS: number): void {
+    // PixiJS v8 stops scheduling frames if a ticker listener throws: one bad
+    // effect would freeze the whole map for the rest of the match. Contain it.
+    try {
+      this.tickInner(deltaMS);
+    } catch (err) {
+      if (this.tickErrors++ < 3) console.error("map tick error (frame skipped)", err);
+      this.effects.forEach((fx) => fx.g.destroy());
+      this.effects = [];
+    }
+  }
+
+  private tickInner(deltaMS: number): void {
     const now = performance.now();
     // The atlases can finish loading after the first render (or after the
     // match ended and no more renders come): re-skin every puppet once.
@@ -760,7 +776,7 @@ export class MapRenderer {
           g.circle(b.x, b.y, 3 + k * 9).stroke({ width: 2, color: 0xffd54f, alpha: 1 - k });
           g.circle(b.x, b.y, 2 + (1 - k) * 3).fill({ color: 0xffffff, alpha: 1 - k });
         }, BOLT_MS);
-        if (victim) setTimeout(() => { victim.hitAt = performance.now(); }, BOLT_MS);
+        if (victim) setTimeout(() => { if (!victim.root.destroyed) victim.hitAt = performance.now(); }, BOLT_MS);
       } else {
         // Melee: spark burst on the victim, immediately.
         const seed = ((ev.attacker as number) ?? 0) * 7;

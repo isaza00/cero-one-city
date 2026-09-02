@@ -889,3 +889,9 @@ tr:hover td { background: rgba(255, 255, 255, 0.03); }
 .hud-topbar { padding: 8px 10px; gap: 10px; grid-template-columns: minmax(250px, 1fr) auto minmax(250px, 1fr); }
 .hud-topbar > .hud-block:nth-child(n+4) { grid-column: span 1; }
 .fog-select { top: 206px; }
+/* narrow map (stacked or small windows): plate on its own row, blocks below */
+@media (max-width: 1600px) {
+  .hud-topbar { grid-template-columns: 1fr 1fr; }
+  .hud-plate, .hud-plate.inline { grid-column: 1 / -1; order: -1; }
+  .hud-block.right { justify-self: stretch; }
+}
