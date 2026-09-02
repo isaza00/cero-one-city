@@ -10,7 +10,7 @@ HIGHLIGHT_KINDS = ("treason", "truce_accepted", "truce_broken", "joint_pact",
                    "firmware")
 
 # Priority of the single line each player gets for the turn (first match wins).
-_PRIORITY = ("eliminated", "core_destroyed", "core_founded", "capture_success",
+_PRIORITY = ("eliminated", "core_destroyed", "core_founded", "human_housed", "capture_success",
              "colossus_fused", "camp_looted", "camp_recruited", "treason", "truce_broken",
              "joint_pact", "truce_accepted", "firmware", "blackout", "unit_killed",
              "building_destroyed", "rack_destroyed", "tech_done", "built")
@@ -82,6 +82,9 @@ def _line(event: dict, names: dict[int, str]) -> str | None:
         return f"Blackout at {name(event['player'])}: {event['units']} units froze stiff."
     if t == "built":
         return f"{name(event['player'])} finished {_a(_label(event['building']))}."
+    if t == "human_housed":
+        return (f"{name(event['player'])} housed a human in a cocoon "
+                f"({event['humans']}/2 incubating).")
     if t in ("building_destroyed", "rack_destroyed"):
         by = event.get("by")
         what = _label(event.get("building", "rack"))
@@ -118,6 +121,7 @@ _GATHER_KINDS = {
     "scrap": ("salvage", "salvages", "the chatarra", "scrap"),
     "rubble": ("clear", "clears", "the rubble", "scrap"),
     "cocoon": ("farm", "farms", "the cocoons", "energy"),
+    "survivor": ("collect", "collects", "a stray human", "human"),
     "field": ("work", "works", "the field", "energy"),
 }
 
@@ -152,6 +156,8 @@ def render_orders(orders_by_player: dict[int, list], names: dict[int, str],
         holder = ent(occ.get((x, y)))
         if holder is not None and holder.type == "cocoon":
             return "cocoon"
+        if holder is not None and holder.type == "survivor":
+            return "survivor"
         return "field"
 
     out: list[dict] = []

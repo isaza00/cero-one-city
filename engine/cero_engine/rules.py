@@ -32,6 +32,13 @@ START_ESCORTS = 1              # strikers: the "scout" that also guards the crew
 
 VEIN_METAL = 300               # finite metal per vein tile (gold)
 POD_ENERGY = 200               # finite energy per wild pod tile (berries/animals)
+# The humans themselves: a drained pod frees its sleeper as a neutral
+# `survivor`; workers carry survivors to cocoons, and a cocoon only incubates
+# energy for the humans it holds (one worker slot per human). That is how the
+# renewable economy reproduces: find humans, house them, farm them.
+COCOON_HUMANS_MAX = 2
+START_SURVIVORS = [(-3, 4), (5, -2)]   # stray humans near each start (ideal-core offsets)
+SURVIVOR_SPAWN_ON_POD_DEPLETION = True
 RUBBLE_CLEAR_TURNS = 2
 RUBBLE_METAL = 10
 
@@ -40,7 +47,7 @@ UPKEEP_PER_UNIT = 1
 # watchers run on their own cells, so an empty bank never deadlocks the
 # economy (AoE2 has no upkeep at all; this keeps the brief's "no energy, no
 # army" without the death spiral).
-UPKEEP_EXEMPT = ("worker", "watcher")
+UPKEEP_EXEMPT = ("worker", "watcher", "survivor")
 
 # ------------------------------------------------------------------- compute
 COMPUTE_CORE = 10              # a core = the AoE2 town center's 5 pop, doubled
@@ -54,7 +61,7 @@ HARVEST_ENERGY = 8             # per worker per turn on an owned cocoon (farm)
 HARVEST_ENERGY_RICH = 10       # with rich_harvest
 POD_ENERGY_RATE = 8            # per worker per turn on a wild pod
 POD_ENERGY_RATE_RICH = 10      # with rich_harvest
-MAX_WORKERS_PER_COCOON = 2
+MAX_WORKERS_PER_COCOON = 2     # hard cap; the real cap is the cocoon's humans
 MINE_METAL = 6                 # per worker per turn on a vein
 MINE_METAL_FAST = 8            # with fast_mining
 SCRAP_COLLECT_RATE = 20        # per worker per turn from scrap/ruins
@@ -170,6 +177,9 @@ UNITS: dict[str, dict] = {
     "leech": dict(fw="v1", hp=25, atk=5, bonus=0, bonus_vs=(), armor=0, range=1, mov=8,
                   vis=6, cost_e=20, cost_m=15, compute=1, prod_turns=1, prod_at="assembler",
                   air=False, aa=False, lineage="parasite"),
+    "survivor": dict(fw=None, hp=10, atk=0, bonus=0, bonus_vs=(), armor=0, range=0, mov=0,
+                     vis=0, cost_e=0, cost_m=0, compute=0, prod_turns=0, prod_at=None,
+                     air=False, aa=False, neutral=True),
     "prism": dict(fw="v1", hp=18, atk=5, bonus=0, bonus_vs=(), armor=0, range=3, mov=6,
                   vis=6, cost_e=20, cost_m=10, compute=1, prod_turns=1, prod_at="assembler",
                   air=False, aa=False, lineage="photon"),

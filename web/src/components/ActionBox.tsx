@@ -162,6 +162,10 @@ function Target({ t, lineages }: {
                      ring={owner >= 0 ? PLAYER_COLOR_CSS[owner % 4] : undefined} />;
   }
   if (t.kind === "terrain") {
+    if (t.terrain === "survivor") {
+      return <span className="abx-portrait" title="a stray human: carried to a cocoon">
+        <LineageAvatar lineage="neutral" unit="human" size={48} /></span>;
+    }
     if (t.terrain === "cocoon") {
       return <span className="abx-portrait" title="cocoon farm (energy)">
         <BuildingIcon type="cocoon" owner={-1} size={48} /></span>;

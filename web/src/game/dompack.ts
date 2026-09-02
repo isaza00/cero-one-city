@@ -24,7 +24,7 @@ export interface DomPack {
   buildingImg: Record<string, HTMLImageElement>;
 }
 
-const UNIT_ALIAS: Record<string, string> = { prism: "launcher" };
+const UNIT_ALIAS: Record<string, string> = { prism: "launcher", survivor: "human" };
 
 let pack: DomPack | null = null;
 let loading: Promise<DomPack | null> | null = null;

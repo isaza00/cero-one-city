@@ -142,6 +142,9 @@ function UnitCard({ entity, name, lineage, crew }: {
         <strong>
           {info?.label ?? entity.type.replace(/_/g, " ")}
           {aoe && <span className="hud-aoe"> · {aoe}</span>}
+          {entity.type === "cocoon" && !left && (
+            <span className="hud-aoe"> · {entity.humans ?? 0}/2 humans</span>
+          )}
           {left > 0 && <span className="hud-site-tag"> under construction</span>}
         </strong>
         <span className="hint" style={{

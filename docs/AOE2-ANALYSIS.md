@@ -23,7 +23,8 @@ gives once.**
 | Gold | metal | veins, scrap, ruins |
 | Wood / stone | metal | one building material instead of two |
 | Population | compute | core +10, rack +4 (swarm +6) |
-| Berries / sheep / deer / boar | **wild pods** (`pod` tiles) | 200 energy each, 8 per worker per turn, finite |
+| Berries / deer / boar | **wild pods** (`pod` tiles) | 200 energy each, 8 per worker per turn, finite; a drained pod frees its sleeper |
+| Sheep (herded to the TC) | **survivors** (neutral `survivor` units) | stray humans a worker carries to a cocoon; each one is a farming slot |
 | Farm | cocoon | 25 metal, 8 energy/worker/turn, 2 workers, renewable |
 | Town Center | core | 100 metal, 2x2, drop-off, trains workers, ages up |
 | House | rack | 40 metal, +4 compute |
@@ -80,9 +81,13 @@ physically carrying things*. Cero keeps every piece of that model:
     when one runs dry the worker steps to the nearest pod within 6 tiles by
     itself (the villager-to-the-next-bush reflex). A 4-pod cluster feeds 3
     workers for ~25 turns - about when a boomer needs farms.
-  - **Cocoons** (farms): 25 metal, 2 workers, 8/turn each, renewable. Build
-    them hugging the core so harvesting banks on the spot (AoE2 farms ring
-    the TC for the same reason).
+  - **Cocoons** (farms): 25 metal, renewable, 8/turn per worker - but a cocoon
+    incubates nothing until a worker carries a **survivor** into it (one worker
+    slot per human, max 2). Survivors are the sheep of this game: two stand
+    near every start, one beside every wild pod cluster, and every drained pod
+    frees the human that slept in it. That is how the economy reproduces: find
+    humans, house them, farm them. Build cocoons hugging the core so harvesting
+    banks on the spot (AoE2 farms ring the TC for the same reason).
 - **Metal = gold and wood.** Veins (300, 6/turn, 8 with `fast_mining`), scrap
   left by dead robots (20/turn), ruins of eliminated players. Every building
   costs metal, so metal is also wood.

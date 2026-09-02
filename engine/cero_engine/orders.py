@@ -164,11 +164,17 @@ def _validate_one(state: State, player, actor: Entity, otype: str, order: dict,
         terrain = state.tiles[gy][gx]
         own_cocoon = any(e.type == "cocoon" and e.owner == pid and (e.x, e.y) == (gx, gy)
                          for e in state.entities_sorted())
+        survivor = any(e.type == "survivor" and (e.x, e.y) == (gx, gy)
+                       for e in state.entities_sorted())
         if (terrain not in ("vein", "pod", "rubble") and f"{gx},{gy}" not in state.scrap
-                and not own_cocoon):
+                and not own_cocoon and not survivor):
             _err(errors, actor.id, otype, "nothing_there",
-                 "gather targets a vein, pod, scrap pile, rubble or one of your cocoons")
+                 "gather targets a vein, pod, scrap pile, rubble, a survivor or one of your cocoons")
             return False
+        if actor.cargo_h and not own_cocoon:
+            # Carrying a human: only a cocoon can take it; keep the delivery.
+            actor.standing_order = {"type": "gather", "target": [gx, gy], "phase": "deliver"}
+            return True
         actor.standing_order = {"type": "gather", "target": [gx, gy], "phase": "work"}
         return True
 

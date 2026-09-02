@@ -198,6 +198,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
     pod_rolls = max(2, size // 24)
     placed = 0
     attempts = 0
+    pod_cluster_origins: list[tuple[int, int]] = []
     while placed < pod_rolls and attempts < 600:
         attempts += 1
         x = 4 + rng.randint(size - 10)
@@ -212,6 +213,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
             continue
         for ox, oy in all_tiles:
             place_pod(ox, oy)
+        pod_cluster_origins.append((x, y))
         placed += 1
 
     # 6. Camps, scaled with map size (96 -> 3 rolled orbits = 6 camps in 1v1),
@@ -257,6 +259,23 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
             x, y = t(ax + START_ESCORT_OFFSET[0], ay + START_ESCORT_OFFSET[1])
             state.add_entity(Entity(id=state.new_id(), owner=slot, kind="unit", type="striker",
                                     x=x, y=y, hp=unit_max_hp(player, "striker")))
+
+    # Stray humans: two near every start zone, one beside each expansion pod
+    # cluster (the sleepers a worker carries to the first cocoons).
+    survivor_tiles: list[tuple[int, int]] = []
+    for t in transforms:
+        for ox, oy in rules.START_SURVIVORS:
+            survivor_tiles.append(t(ax + ox, ay + oy))
+    for cx, cy in pod_cluster_origins:
+        for ox, oy in _orbit(fmt, size, cx - 1, cy - 1):
+            survivor_tiles.append((ox, oy))
+    occupied = {(e.x, e.y) for e in state.entities_sorted() if e.is_unit}
+    for sx, sy in sorted(set(survivor_tiles)):
+        if not state.in_bounds(sx, sy) or tiles[sy][sx] != "plain" or (sx, sy) in occupied:
+            continue
+        occupied.add((sx, sy))
+        state.add_entity(Entity(id=state.new_id(), owner=-1, kind="unit", type="survivor",
+                                x=sx, y=sy, hp=rules.UNITS["survivor"]["hp"]))
 
     for camp_x, camp_y in sorted(camp_positions):
         camp = state.add_entity(Entity(id=state.new_id(), owner=-1, kind="building",

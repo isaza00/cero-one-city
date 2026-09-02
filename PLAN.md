@@ -224,7 +224,8 @@ resumes from the last persisted turn.
 | Resource | Source | Rate per worker/turn | Notes |
 |---|---|---|---|
 | Energy | **Wild pod** (adjacent) | 8 (10 with rich_harvest) | Finite (200/pod); the "berries" you must find **[s2.0]** |
-| Energy | Own cocoon (max 2 workers per cocoon) | 8 (10 with rich_harvest) | Renewable farm; the game's "food" |
+| Energy | Own cocoon (one worker per human inside, max 2) | 8 (10 with rich_harvest) | Renewable farm; needs **survivors** carried into it **[s2.0]** |
+| Humans | Neutral `survivor` units: 2 per start, 1 per wild pod cluster, 1 freed by every drained pod | a worker carries one (`gather` on its tile) | Delivered to the nearest own cocoon with room (`phase: "deliver"`) |
 | Metal | Vein (adjacent) | 6 (8 with fast_mining) | Finite (300/vein); also scrap, rubble, ruins |
 | Compute | Core +10, rack +4 (swarm +6) | — | Not spent: an army cap. Free compute ≥ 5 at job start → jobs of ≥2 turns take 1 turn less |
 

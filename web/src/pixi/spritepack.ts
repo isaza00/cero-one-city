@@ -30,7 +30,7 @@ let frameClock = 0;
 
 // Units with no row in the shipped atlas yet, drawn as a close cousin so
 // placeholder art never leaks into the new style.
-const PACK_ALIAS: Record<string, string> = { prism: "launcher" };
+const PACK_ALIAS: Record<string, string> = { prism: "launcher", survivor: "human" };
 
 // Self-initializing: every accessor kicks the load, so it works no matter
 // which module instance or import order touches it first (Vite dev serves

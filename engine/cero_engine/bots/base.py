@@ -18,7 +18,8 @@ LINEAGE_UNIQUE = {"swarm": "spark", "forge": "anvil", "oracle": "watcher",
 FW_TIER = {"v1": 1, "v2": 2, "v3": 3}
 SIZE_OF = {b: (s["w"], s["h"]) for b, s in rules.BUILDINGS.items()}
 # How many workers one resource tile takes before the next tile is better.
-TILE_CAP = {"pod": 3, "vein": 3, "cocoon": rules.MAX_WORKERS_PER_COCOON, "scrap": 2}
+TILE_CAP = {"pod": 3, "vein": 3, "cocoon": rules.MAX_WORKERS_PER_COCOON, "scrap": 2,
+            "survivor": 1}
 
 
 def cheb(ax: int, ay: int, bx: int, by: int) -> int:
@@ -181,9 +182,28 @@ class Bot:
                 left = t["scrap"].get("e", 0) + t["scrap"].get("m", 0)
                 if left > 0:
                     out.append({"x": t["x"], "y": t["y"], "kind": "scrap", "left": left})
+        room = 0
         for c in self.buildings(obs, "cocoon"):
-            out.append({"x": c["x"], "y": c["y"], "kind": "cocoon", "left": 10 ** 6})
+            humans = c.get("humans", 0)
+            room += rules.COCOON_HUMANS_MAX - humans
+            if humans > 0:  # an empty cocoon incubates nothing
+                out.append({"x": c["x"], "y": c["y"], "kind": "cocoon", "left": 10 ** 6,
+                            "cap": humans})
+        # Stray humans are worth fetching only when a cocoon can take them.
+        carrying = sum(1 for u in self.units(obs, "worker") if (u.get("carrying") or {}).get("h"))
+        if room - carrying > 0:
+            for s in sorted(obs.get("survivors") or [], key=lambda s: s["id"])[:room - carrying]:
+                out.append({"x": s["x"], "y": s["y"], "kind": "survivor", "left": 1})
         return sorted(out, key=lambda t: (t["x"], t["y"]))
+
+    def humans_available(self, obs: dict) -> int:
+        """Survivors in sight plus humans already being carried: what new cocoons
+        could incubate."""
+        carrying = sum(1 for u in self.units(obs, "worker") if (u.get("carrying") or {}).get("h"))
+        return len(obs.get("survivors") or []) + carrying
+
+    def cocoon_slots(self, obs: dict) -> int:
+        return sum(c.get("humans", 0) for c in self.buildings(obs, "cocoon"))
 
     def bank_distance(self, obs: dict, x: int, y: int) -> int:
         """Tiles between a resource and the nearest finished drop-off (0-1 means a
@@ -201,7 +221,7 @@ class Bot:
         tiles = self.resource_tiles(obs)
         by_pos = {(t["x"], t["y"]): t for t in tiles}
         load: dict[tuple[int, int], int] = {}
-        energy_kinds = ("pod", "cocoon")
+        energy_kinds = ("pod", "cocoon", "survivor")
 
         pool: list[dict] = []
         energy_count = 0
@@ -223,6 +243,8 @@ class Bot:
                 pool.append(u)  # its tile is gone: re-task
             elif so:
                 continue  # building / repairing / moving on purpose
+            elif (u.get("carrying") or {}).get("h"):
+                continue  # holding a human for a cocoon that is not finished yet
             else:
                 pool.append(u)
 
@@ -233,9 +255,9 @@ class Bot:
                 is_energy = t["kind"] in energy_kinds
                 if is_energy != want_energy:
                     continue
-                if load.get((t["x"], t["y"]), 0) >= TILE_CAP[t["kind"]]:
+                if load.get((t["x"], t["y"]), 0) >= t.get("cap", TILE_CAP[t["kind"]]):
                     continue
-                bank = self.bank_distance(obs, t["x"], t["y"])
+                bank = 0 if t["kind"] == "survivor" else self.bank_distance(obs, t["x"], t["y"])
                 key = (0 if bank <= 2 else 1, bank, cheb(u["x"], u["y"], t["x"], t["y"]),
                        t["x"], t["y"])
                 if best_key is None or key < best_key:
@@ -266,8 +288,9 @@ class Bot:
         if self.sites(obs, "depot") or len(self.buildings(obs, "depot")) >= max_depots:
             return False
         # Only when the tiles that already bank instantly cannot seat the crew.
-        seats = sum(TILE_CAP[t["kind"]] for t in self.resource_tiles(obs)
-                    if t["left"] >= 40 and self.bank_distance(obs, t["x"], t["y"]) <= 2)
+        seats = sum(t.get("cap", TILE_CAP[t["kind"]]) for t in self.resource_tiles(obs)
+                    if t["kind"] != "survivor" and t["left"] >= 40
+                    and self.bank_distance(obs, t["x"], t["y"]) <= 2)
         if seats >= len(self.units(obs, "worker")):
             return False
         hx, hy = self.base_center(obs)

@@ -46,8 +46,8 @@ def observe(state: State, player_id: int, band: str = "C",
                 status.append("fusing")
             u: dict = {"id": e.id, "type": e.type, "x": e.x, "y": e.y, "hp": e.hp,
                        "status": status, "standing_order": e.standing_order}
-            if e.cargo:
-                u["carrying"] = {"e": e.cargo_e, "m": e.cargo_m}
+            if e.cargo or e.cargo_h:
+                u["carrying"] = {"e": e.cargo_e, "m": e.cargo_m, "h": e.cargo_h}
             units.append(u)
             if e.type == "worker":
                 so = e.standing_order or {}
@@ -57,7 +57,7 @@ def observe(state: State, player_id: int, band: str = "C",
                     builders += 1
                 elif so.get("type") == "gather":
                     kind = _gather_kind(state, player_id, so.get("target", [0, 0]))
-                    if kind in ("pod", "cocoon"):
+                    if kind in ("pod", "cocoon", "survivor"):
                         gathering["energy"] += 1
                     elif kind in ("vein", "scrap", "rubble"):
                         gathering["metal"] += 1
@@ -82,6 +82,7 @@ def observe(state: State, player_id: int, band: str = "C",
                 b["rally"] = list(e.rally)
             if e.type == "cocoon":
                 b["accumulator"] = e.accumulator
+                b["humans"] = e.humans  # worker slots; 0 = incubates nothing yet
             if e.capture:
                 b["disputed_by"] = e.capture["by"]
                 b["dispute_counter"] = e.capture["counter"]
@@ -113,6 +114,8 @@ def observe(state: State, player_id: int, band: str = "C",
                               "owner": seen["owner"]})
 
     enemies = _enemies_view(state, player_id, band, tiles)
+    survivors = [{"id": e.id, "x": e.x, "y": e.y} for e in state.entities_sorted()
+                 if e.type == "survivor" and (e.x, e.y) in tiles]
     camps = []
     for e in state.entities_sorted():
         if e.type == "camp" and (e.x, e.y) in tiles:
@@ -187,6 +190,7 @@ def observe(state: State, player_id: int, band: str = "C",
         "diplomacy": {"truces": truces, "proposals_in": proposals_in, "joint_pacts": joint,
                       "available_actions": diplo_actions or []},
         "camps": camps,
+        "survivors": survivors,
         "score_estimate": {"you": scores[player_id], "visible_best_rival": rival_estimate},
     }
 
@@ -205,6 +209,8 @@ def _gather_kind(state: State, pid: int, target) -> str | None:
     if any(e.type == "cocoon" and e.owner == pid and (e.x, e.y) == (gx, gy)
            for e in state.entities_sorted()):
         return "cocoon"
+    if any(e.type == "survivor" and (e.x, e.y) == (gx, gy) for e in state.entities_sorted()):
+        return "survivor"
     return None
 
 

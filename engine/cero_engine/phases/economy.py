@@ -61,6 +61,17 @@ def _drop_unit_scrap(state: State, unit) -> None:
     pile = state.scrap.setdefault(key, {"e": 0, "m": 0})
     pile["m"] += metal + unit.cargo_m   # a loaded worker spills its cargo too
     pile["e"] += unit.cargo_e
+    drop_human(state, unit)
+
+
+def drop_human(state: State, unit) -> None:
+    """A worker that dies carrying a survivor leaves the human standing there."""
+    if not unit.cargo_h:
+        return
+    unit.cargo_h = 0
+    from cero_engine.state import Entity
+    state.add_entity(Entity(id=state.new_id(), owner=-1, kind="unit", type="survivor",
+                            x=unit.x, y=unit.y, hp=rules.UNITS["survivor"]["hp"]))
 
 
 def near_dropoff(worker, dropoff_tiles: list[tuple[int, int]]) -> bool:
@@ -130,6 +141,20 @@ def gathering_phase(state: State, ctx) -> None:
                 continue
             if order.get("phase") == "return":
                 continue  # walking a full load home (movement phase)
+            if worker.cargo_h:
+                # Carrying a human: hand it to the first own cocoon with room in reach,
+                # then farm that cocoon (AoE2: the villager who fills the farm works it).
+                cocoon = _cocoon_with_room_adjacent(state, player.id, worker)
+                if cocoon is None:
+                    order["phase"] = "deliver"
+                    continue
+                cocoon.humans += 1
+                worker.cargo_h = 0
+                ctx.emit(type="human_housed", player=player.id, unit=worker.id,
+                         cocoon=cocoon.id, x=cocoon.x, y=cocoon.y, humans=cocoon.humans)
+                order["target"] = [cocoon.x, cocoon.y]
+                order["phase"] = "work"
+                gx, gy = cocoon.x, cocoon.y
 
             gx, gy = order["target"]
             if max(abs(worker.x - gx), abs(worker.y - gy)) > 1:
@@ -141,6 +166,16 @@ def gathering_phase(state: State, ctx) -> None:
 
             key = tk(gx, gy)
             terrain = state.tiles[gy][gx]
+
+            # A stray human on that tile: pick it up (the sheep of this game).
+            survivor = next((e for e in state.entities_sorted()
+                             if e.type == "survivor" and (e.x, e.y) == (gx, gy)), None)
+            if survivor is not None:
+                state.remove_entity(survivor.id)
+                worker.cargo_h = 1
+                order["phase"] = "deliver"
+                ctx.emit(type="survivor_collected", player=player.id, unit=worker.id, x=gx, y=gy)
+                continue
 
             # Scrap piles (unit scrap or elimination ruins): metal first, then energy.
             if key in state.scrap:
@@ -180,6 +215,12 @@ def gathering_phase(state: State, ctx) -> None:
                     state.pods.pop(key, None)
                     state.tiles[gy][gx] = "plain"
                     ctx.emit(type="pod_depleted", x=gx, y=gy)
+                    if rules.SURVIVOR_SPAWN_ON_POD_DEPLETION:
+                        # The sleeper wakes up: a survivor to carry to a cocoon.
+                        from cero_engine.state import Entity
+                        state.add_entity(Entity(id=state.new_id(), owner=-1, kind="unit",
+                                                type="survivor", x=gx, y=gy,
+                                                hp=rules.UNITS["survivor"]["hp"]))
                     _retarget(state, worker, order, "pod", gx, gy, cocoon_workers)
                 else:
                     state.pods[key] = remaining
@@ -199,7 +240,8 @@ def gathering_phase(state: State, ctx) -> None:
                     worker.standing_order = None  # nothing to gather there
                     continue
                 used = cocoon_workers.get(cocoon.id, 0)
-                if used >= rules.MAX_WORKERS_PER_COCOON:
+                if used >= min(rules.MAX_WORKERS_PER_COCOON, cocoon.humans):
+                    # Nobody to incubate (or every slot taken): find another farm.
                     _retarget(state, worker, order, "cocoon", gx, gy, cocoon_workers)
                     continue
                 cocoon_workers[cocoon.id] = used + 1
@@ -235,7 +277,8 @@ def _retarget(state: State, worker, order: dict, kind: str, fx: int, fy: int,
                                if e.type == "cocoon" and e.owner == worker.owner
                                and not e.build_progress and (e.x, e.y) == (x, y)), None)
                 ok = (cocoon is not None
-                      and cocoon_workers.get(cocoon.id, 0) < rules.MAX_WORKERS_PER_COCOON)
+                      and cocoon_workers.get(cocoon.id, 0)
+                      < min(rules.MAX_WORKERS_PER_COCOON, cocoon.humans))
             if not ok:
                 continue
             key = (max(abs(x - fx), abs(y - fy)), x, y)
@@ -247,6 +290,21 @@ def _retarget(state: State, worker, order: dict, kind: str, fx: int, fy: int,
     order["target"] = [best[1], best[2]]
     order["phase"] = "work"
     order.pop("progress", None)
+
+
+def _cocoon_with_room_adjacent(state: State, pid: int, worker):
+    """Lowest-id own finished cocoon next to the worker with a free human slot."""
+    for e in state.entities_sorted():
+        if (e.type == "cocoon" and e.owner == pid and not e.build_progress
+                and e.humans < rules.COCOON_HUMANS_MAX
+                and max(abs(worker.x - e.x), abs(worker.y - e.y)) <= 1):
+            return e
+    return None
+
+
+def cocoons_with_room(state: State, pid: int) -> list:
+    return [e for e in state.buildings_of(pid)
+            if e.type == "cocoon" and not e.build_progress and e.humans < rules.COCOON_HUMANS_MAX]
 
 
 def _adjacent_to_footprint(unit, building) -> bool:

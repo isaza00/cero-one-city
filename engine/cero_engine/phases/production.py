@@ -268,9 +268,31 @@ def _release_crew(state: State, site) -> None:
         return
     for u in crew:
         u.standing_order = None
-        if site.type == "cocoon" and farmers < rules.MAX_WORKERS_PER_COCOON:
-            u.standing_order = {"type": "gather", "target": [site.x, site.y], "phase": "work"}
+        if site.type == "cocoon" and farmers < rules.COCOON_HUMANS_MAX:
+            # An empty farm incubates nothing: the builder fetches the nearest
+            # stray human (or farms it right away if the cocoon already holds one).
+            if site.humans > farmers:
+                u.standing_order = {"type": "gather", "target": [site.x, site.y], "phase": "work"}
+            else:
+                s = _nearest_survivor(state, site, 10)
+                if s is not None:
+                    u.standing_order = {"type": "gather", "target": [s.x, s.y], "phase": "work"}
             farmers += 1
+
+
+def _nearest_survivor(state: State, site, radius: int):
+    best = None
+    best_key = None
+    for e in state.entities_sorted():
+        if e.type != "survivor":
+            continue
+        d = max(abs(e.x - site.x), abs(e.y - site.y))
+        if d > radius:
+            continue
+        key = (d, e.id)
+        if best_key is None or key < best_key:
+            best, best_key = e, key
+    return best
 
 
 def _resources_near(state: State, site, radius: int, kinds: tuple[str, ...]) -> list[tuple[int, int]]:

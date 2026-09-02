@@ -9,7 +9,7 @@ export const NEUTRAL_COLOR = 0x9e9e9e;
 export const UNIT_VISION: Record<string, number> = {
   worker: 5, striker: 5, launcher: 6, rider: 8, wasp: 9, walking_tower: 8,
   drone_swarm: 8, colossus: 6, human: 6, spark: 5, anvil: 5, watcher: 13, leech: 6,
-  prism: 6,
+  prism: 6, survivor: 0,
 };
 
 export const BUILDING_VISION: Record<string, number> = {
@@ -38,7 +38,7 @@ export const DROPOFF_TYPES = new Set(["core", "depot"]);
 export const UNIT_MAX_HP: Record<string, number> = {
   worker: 20, striker: 30, launcher: 25, rider: 55, wasp: 20, walking_tower: 80,
   drone_swarm: 35, colossus: 150, human: 15, spark: 15, anvil: 60, watcher: 10,
-  leech: 25, prism: 18,
+  leech: 25, prism: 18, survivor: 10,
 };
 
 export const BUILDING_MAX_HP: Record<string, number> = {
@@ -97,6 +97,7 @@ export const UNIT_POWERS: Record<string, { label: string; power: string }> = {
   watcher: { label: "Watcher", power: "Oracle special: flying eye with vision 13. No weapon, all knowledge." },
   leech: { label: "Leech", power: "Parasite special: latches onto enemy racks and steals them." },
   prism: { label: "Prism", power: "Photon special: light artillery from range 3, available from firmware v1." },
+  survivor: { label: "Survivor", power: "A stray human, asleep on its feet. A worker carries it to a cocoon; each human is one farming slot." },
 };
 
 // Combat stats for the selection card (mirrors engine rules.py, display only).
@@ -115,6 +116,7 @@ export const UNIT_STATS: Record<string, { atk: number; armor: number; range: num
   watcher: { atk: 0, armor: 0, range: 0, mov: 12, air: true },
   leech: { atk: 5, armor: 0, range: 1, mov: 8 },
   prism: { atk: 5, armor: 0, range: 3, mov: 6 },
+  survivor: { atk: 0, armor: 0, range: 0, mov: 0 },
 };
 
 // The AoE2 mapping is the tooltip: every building names what it is in Age.
@@ -122,7 +124,7 @@ export const BUILDING_INFO: Record<string, { label: string; aoe: string; power: 
   core: { label: "Core", aoe: "Town Center",
           power: "The heart and the drop-off. Trains workers, researches firmware, +10 compute. Lose your last core and the city dies with a city-shaking blast." },
   cocoon: { label: "Cocoon", aoe: "Farm",
-            power: "A human incubated for energy: 8/turn per worker, 2 workers, renewable. Detonates when destroyed. Build it hugging the core so the harvest banks on the spot." },
+            power: "Incubates the humans you carry into it: 8 energy/turn per worker, one worker per human (max 2), renewable. Empty, it makes nothing. Detonates when destroyed." },
   rack: { label: "Rack", aoe: "House",
           power: "+4 compute: lets the city think bigger armies. Cascades on death. Parasite leeches can steal it." },
   depot: { label: "Depot", aoe: "Mining camp / Mill",

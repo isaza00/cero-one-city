@@ -79,8 +79,8 @@ _BUILDING_NOTES = {
     "core": "TOWN CENTER + drop-off: trains workers (and watchers), researches core techs and "
             "firmware; +10 compute; a second core needs firmware v2; losing your LAST core "
             "eliminates you",
-    "cocoon": "FARM: 8 energy/worker/turn, max 2 workers, renewable; explodes on death; "
-              "build it next to a core/depot so the harvest banks on the spot",
+    "cocoon": "FARM: needs humans inside (carry survivors to it); 8 energy/worker/turn, one worker "
+              "per human (max 2), renewable; explodes on death; build it next to a core/depot",
     "rack": "HOUSE: +4 compute (swarm +6); cascades 10 damage on death; parasite can capture it",
     "depot": "MINING CAMP / MILL: drop-off point; build it beside far veins or pods",
     "assembler": "BARRACKS/STABLE/RANGE: trains every combat unit; required for firmware v2",
@@ -146,6 +146,9 @@ THE GAME IN ONE BREATH (think Age of Empires II)
   The observation's menus.build entry for "core" carries a "suggested_anchor": a free 2x2 spot next to pods and a vein.
 - ENERGY is food. It comes from wild PODS (capsules of dormant humans scattered on the map, {rules.POD_ENERGY} energy each,
   {rules.POD_ENERGY_RATE}/worker/turn, finite) and later from COCOONS you build (farms: {rules.HARVEST_ENERGY}/worker/turn, max 2 workers, renewable).
+  THE HUMANS: a drained pod frees its sleeper as a neutral "survivor" (obs.survivors; two also stand near your start).
+  A cocoon incubates NOTHING until a worker carries a survivor into it (order "gather" on the survivor's tile: the worker
+  picks it up and walks it to your nearest cocoon with room; each human = one worker slot, max {rules.COCOON_HUMANS_MAX}).
   Workers cost {rules.UNITS['worker']['cost_e']} energy at the core. Every combat unit costs {rules.UPKEEP_PER_UNIT} energy per turn of upkeep; unpaid ones freeze stiff.
 - METAL is gold: finite veins ({rules.VEIN_METAL} each, {rules.MINE_METAL}/worker/turn), scrap left by dead robots, ruins. Every building costs metal.
 - DROP-OFFS: a worker carries up to {rules.CARRY_CAPACITY} of what it gathers and must bank it at a core or a depot. A worker standing
@@ -193,7 +196,7 @@ RESPONSE FORMAT: a single valid JSON object with "orders" (list) and optional "m
 (your private notes, max 20 strings x 280 chars - they replace the previous notes and come back to you next turn).
 Order shapes: {{"type":"move","actor_id":id,"to":[x,y]}} | {{"type":"attack","actor_id":id,"target_id":id}} |
 {{"type":"attack_move","actor_id":id,"to":[x,y]}} |
-{{"type":"gather","actor_id":worker,"target":[x,y]}} (a pod, vein, scrap, rubble or one of your cocoons) |
+{{"type":"gather","actor_id":worker,"target":[x,y]}} (a pod, vein, scrap, rubble, a survivor or one of your cocoons) |
 {{"type":"build","actor_id":worker,"building":"depot","anchor":[x,y]}} | {{"type":"build","actor_id":worker,"target_id":site_id}} (join a crew) |
 {{"type":"repair","actor_id":worker,"target_id":id}} | {{"type":"produce","actor_id":building,"unit":"striker"}} |
 {{"type":"research","actor_id":building,"tech":"firmware_v2"}} | {{"type":"rally","actor_id":building,"to":[x,y]}} |

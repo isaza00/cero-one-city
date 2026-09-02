@@ -107,6 +107,10 @@ export interface EntityOut {
   /** Workers: cargo carried toward a drop-off (core or depot). */
   cargo_e?: number;
   cargo_m?: number;
+  /** Workers: a survivor being carried to a cocoon. */
+  cargo_h?: number;
+  /** Cocoons: humans incubating (= worker slots, max 2). */
+  humans?: number;
   /** Producers: where freshly trained units walk to. */
   rally?: number[] | null;
   accumulator?: number;

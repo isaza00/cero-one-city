@@ -109,15 +109,42 @@ def test_foundation_hp_grows_with_work_and_can_be_sniped():
     assert any(e["type"] == "rack_destroyed" for e in state.events_last_turn)
 
 
-def test_cocoon_builder_farms_it():
+def test_cocoon_builder_fetches_a_human_then_farms_it():
     state = with_cores(blank_state())
     worker = add(state, 0, "unit", "worker", 2, 3)
+    survivor = add(state, -1, "unit", "survivor", 6, 3)
     turn(state, {0: [{"actor_id": worker.id, "type": "build", "building": "cocoon",
                       "anchor": [3, 3]}]})
     turn(state)
     cocoon = next(b for b in state.buildings_of(0) if b.type == "cocoon")
-    assert cocoon.build_progress == 0
+    assert cocoon.build_progress == 0 and cocoon.humans == 0
+    # an empty cocoon incubates nothing: the builder goes for the stray human
+    assert worker.standing_order == {"type": "gather", "target": [6, 3], "phase": "work"}
+    turn(state)  # walks next to the survivor and picks it up
+    assert state.ent(survivor.id) is None and worker.cargo_h == 1
+    assert worker.standing_order["phase"] == "deliver"
+    turn(state)  # walks back to the cocoon and houses the human
+    assert cocoon.humans == 1 and worker.cargo_h == 0
     assert worker.standing_order == {"type": "gather", "target": [3, 3], "phase": "work"}
+    assert any(e["type"] == "human_housed" for e in state.events_last_turn)
+    assert worker.cargo_e == rules.HARVEST_ENERGY  # it farmed the moment it housed the human
+    e0 = state.players[0].energy
+    turn(state)  # farming: the harvest lands in cargo or, if next to the core, the bank
+    assert state.players[0].energy + worker.cargo_e == e0 + 2 * rules.HARVEST_ENERGY
+
+
+def test_empty_cocoon_gives_nothing_and_pods_free_their_sleeper():
+    state = with_cores(blank_state())
+    add(state, 0, "building", "cocoon", 3, 0)
+    w = add(state, 0, "unit", "worker", 2, 1)
+    e0 = state.players[0].energy
+    turn(state, {0: [{"actor_id": w.id, "type": "gather", "target": [3, 0]}]})
+    assert state.players[0].energy == e0 and w.standing_order is None
+    state.tiles[2][3] = "pod"
+    state.pods["3,2"] = 8
+    turn(state, {0: [{"actor_id": w.id, "type": "gather", "target": [3, 2]}]})
+    assert "3,2" not in state.pods
+    assert any(e.type == "survivor" and (e.x, e.y) == (3, 2) for e in state.entities_sorted())
 
 
 # ------------------------------------------------------------ drop-off economy
@@ -342,7 +369,7 @@ def test_observation_reports_carrying_sites_and_idle_workers():
     add(state, 0, "building", "depot", 8, 8, build_progress=2, build_total=2)
     obs = observe(state, 0)
     me = {u["id"]: u for u in obs["units"]}
-    assert me[w1.id]["carrying"] == {"e": 0, "m": 7}
+    assert me[w1.id]["carrying"] == {"e": 0, "m": 7, "h": 0}
     assert obs["economy"]["idle_workers"] == [w1.id, w2.id]
     site = next(b for b in obs["buildings"] if b["type"] == "depot")
     assert site["under_construction"] == {"work_left": 2, "work_total": 2, "builders": 0}

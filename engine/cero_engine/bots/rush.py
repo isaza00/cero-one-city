@@ -44,7 +44,8 @@ class RushBot(Bot):
                 self.build_with_worker(obs, orders, "assembler", crew=3)
             elif free_compute < 2 and len(racks) < 10:
                 self.build_with_worker(obs, orders, "rack")
-            elif pods_left < 2 and len(cocoons) < 2 + army_size // 6:
+            elif pods_left < 2 and len(cocoons) < 2 + army_size // 6 \
+                    and self.humans_available(obs) > 0:
                 # The pods are gone: farms keep the striker stream (and its upkeep) alive.
                 self.build_with_worker(obs, orders, "cocoon", hug=self.my_core(obs))
             elif len(assemblers) < 2 and res["metal"] >= 100 and workers >= 8:

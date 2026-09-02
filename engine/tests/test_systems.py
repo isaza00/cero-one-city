@@ -114,7 +114,7 @@ def test_harvest_mine_and_vein_depletion():
     state.tiles[3][3] = "vein"
     state.veins["3,3"] = 10
     w1 = add(state, 0, "unit", "worker", 2, 2)
-    add(state, 0, "building", "cocoon", 3, 0)
+    add(state, 0, "building", "cocoon", 3, 0, humans=1)
     w2 = add(state, 0, "unit", "worker", 2, 1)
     e0, m0 = state.players[0].energy, state.players[0].metal
     turn(state, {0: [

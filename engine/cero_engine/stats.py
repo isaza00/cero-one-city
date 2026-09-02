@@ -7,7 +7,7 @@ from cero_engine.state import Entity, Player, State
 
 
 def is_combat_unit(utype: str) -> bool:
-    return utype not in ("worker", "watcher") and rules.UNITS[utype]["atk"] > 0
+    return utype not in ("worker", "watcher", "survivor") and rules.UNITS[utype]["atk"] > 0
 
 
 def unit_cost(player: Player, utype: str) -> tuple[int, int]:

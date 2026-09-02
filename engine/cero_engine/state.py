@@ -42,6 +42,8 @@ class Entity:
     builder_id: int | None = None         # legacy single-builder binding (unused, kept for replays)
     cargo_e: int = 0                      # workers: energy carried toward a drop-off
     cargo_m: int = 0                      # workers: metal carried toward a drop-off
+    cargo_h: int = 0                      # workers: a survivor carried toward a cocoon
+    humans: int = 0                       # cocoons: sleepers incubating (worker slots)
     rally: list[int] | None = None        # producers: [x, y] new units walk to
     accumulator: int = 0                  # cocoons only
     capture: dict | None = None           # {"by": player, "counter": int}
@@ -110,6 +112,10 @@ class Entity:
             d["cargo_e"] = self.cargo_e
         if self.cargo_m:
             d["cargo_m"] = self.cargo_m
+        if self.cargo_h:
+            d["cargo_h"] = self.cargo_h
+        if self.humans:
+            d["humans"] = self.humans
         if self.rally is not None:
             d["rally"] = self.rally
         if self.accumulator:
@@ -142,6 +148,8 @@ class Entity:
             builder_id=d.get("builder_id"),
             cargo_e=d.get("cargo_e", 0),
             cargo_m=d.get("cargo_m", 0),
+            cargo_h=d.get("cargo_h", 0),
+            humans=d.get("humans", 0),
             rally=list(d["rally"]) if d.get("rally") is not None else None,
             accumulator=d.get("accumulator", 0),
             capture=d.get("capture"),

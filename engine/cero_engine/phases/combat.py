@@ -88,8 +88,8 @@ def combat_phase(state: State, ctx) -> None:
                 continue
             if e.owner < 0 and e.type == "camp":
                 continue  # turrets do not pick fights with neutral camps
-            if e.type == "wall":
-                continue  # a turret never wastes shots on a palisade
+            if e.type in ("wall", "survivor"):
+                continue  # a turret never wastes shots on a palisade or a stray human
             if not _in_range(turret, e, rng):
                 continue
             if e.is_unit and not entity_visible_to(state, e, turret.owner,
@@ -274,8 +274,12 @@ def _process_death(state: State, ctx, e: Entity) -> None:
             metal = max(rules.UNITS[e.type]["cost_m"] * rules.SCRAP_FROM_UNIT_PCT // 100,
                         rules.SCRAP_FROM_UNIT_MIN)
         pile = state.scrap.setdefault(tk(e.x, e.y), {"e": 0, "m": 0})
-        pile["m"] += metal
+        pile["m"] += metal + e.cargo_m
+        pile["e"] += e.cargo_e
         state.remove_entity(e.id)
+        if e.cargo_h:
+            from cero_engine.phases.economy import drop_human
+            drop_human(state, e)
         ctx.emit(type="unit_killed", unit=e.id, unit_type=e.type, owner=e.owner,
                  by=credit, x=e.x, y=e.y)
         return

@@ -1020,6 +1020,12 @@ export class MapRenderer {
     }
     // Cargo: a worker carrying energy (green cell) or metal (steel crate) shows
     // it on its back - AoE2 villagers visibly haul what they gathered.
+    if (e.cargo_h) {
+      // Carrying a human: a small skin-toned figure on the worker's back.
+      g.rect(span * 0.2, -span * 0.2, span * 0.1, span * 0.1).fill(0xe8b796);
+      g.rect(span * 0.18, -span * 0.1, span * 0.14, span * 0.16).fill(0x3a4466);
+      g.rect(span * 0.18, -span * 0.1, span * 0.14, span * 0.16).stroke({ width: 0.8, color: 0x181425 });
+    }
     const cargo = (e.cargo_e ?? 0) + (e.cargo_m ?? 0);
     if (cargo > 0) {
       const k = Math.min(1, cargo / CARRY_CAPACITY);
@@ -1111,6 +1117,17 @@ export class MapRenderer {
     if (e.capture) {
       g.ellipse(0, footY, footW * 0.55, footW * 0.28)
         .stroke({ width: 2.5, color: 0xd500f9 });
+    }
+    if (e.type === "cocoon" && !e.build_progress) {
+      // Who is inside: one green light per human; empty = a dim hollow ring.
+      const n = e.humans ?? 0;
+      if (n === 0) {
+        g.ellipse(0, footY, footW * 0.4, footW * 0.2).stroke({ width: 1.5, color: 0x5a6988, alpha: 0.8 });
+      } else {
+        for (let i = 0; i < n; i++) {
+          g.circle(-4 + i * 8, -span * 0.5, 2.2).fill({ color: 0x3ddc97, alpha: 0.95 });
+        }
+      }
     }
     this.hpBarOn(g, -footW * 0.3, -span * 0.55, footW * 0.6, e.hp,
                  BUILDING_MAX_HP[e.type] ?? 100);

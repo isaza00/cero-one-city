@@ -155,7 +155,13 @@ def _goal_tiles(state: State, ctx, unit: Entity, order: dict, vision_of, buildin
         return (in_range, False) if in_range else None
 
     if kind in ("gather", "repair", "build"):
-        if kind == "gather" and order.get("phase") == "return":
+        if kind == "gather" and order.get("phase") == "deliver":
+            # Carrying a survivor: walk to the nearest own cocoon with a free slot.
+            from cero_engine.phases.economy import cocoons_with_room
+            target_tiles = [(c.x, c.y) for c in cocoons_with_room(state, unit.owner)]
+            if not target_tiles:
+                return None  # no farm to fill yet: wait with the human
+        elif kind == "gather" and order.get("phase") == "return":
             # Full load: walk to the nearest own drop-off (core/depot) and bank it.
             target_tiles = [t for b in state.dropoffs_of(unit.owner) for t in b.footprint()]
             if not target_tiles:

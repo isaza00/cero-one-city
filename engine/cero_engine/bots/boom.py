@@ -4,6 +4,7 @@ second core."""
 
 from __future__ import annotations
 
+from cero_engine import rules
 from cero_engine.bots.base import Bot, cheb
 
 
@@ -64,8 +65,13 @@ class BoomBot(Bot):
             energy_slots = sum(3 for p in self.pods(obs)
                                if p.get("pod_left", 0) >= 40
                                and self.bank_distance(obs, p["x"], p["y"]) <= 2)
-            energy_slots += 2 * len(self.buildings(obs, "cocoon", finished=False))
-            if energy_workers > energy_slots and self.can(obs, "build", "cocoon"):
+            energy_slots += self.cocoon_slots(obs)
+            # A new farm only pays if there is a human to put in it (a stray in
+            # sight, one being carried, or room left in the cocoons we have).
+            spare_room = sum(rules.COCOON_HUMANS_MAX - c.get("humans", 0)
+                             for c in self.buildings(obs, "cocoon", finished=False))
+            can_farm = self.humans_available(obs) > spare_room
+            if energy_workers > energy_slots and can_farm and self.can(obs, "build", "cocoon"):
                 self.build_with_worker(obs, orders, "cocoon", hug=core)
             elif free_compute < 3 and len(racks) < 10:
                 self.build_with_worker(obs, orders, "rack")
