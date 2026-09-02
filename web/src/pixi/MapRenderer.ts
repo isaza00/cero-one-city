@@ -199,21 +199,29 @@ export class MapRenderer {
       // A resize (the side panel growing as the match goes on) must NEVER
       // undo the viewer's zoom: keep it, only clamp so the map still fills.
       if (!this.userCam) this.resetCamera();
-      else { this.zoom = Math.max(this.fitZoom(), this.zoom); this.applyCamera(); }
+      else { this.zoom = Math.max(this.minZoom(), this.zoom); this.applyCamera(); }
     }
   }
 
   // ------------------------------------------------------------------ camera
 
-  private fitZoom(): number {
-    return Math.min(this.viewW / this.worldW, this.viewH / this.worldH);
+  /** The furthest the camera may pull back. AoE2 never shows the whole map
+   * in the main view - that is the minimap's job - so the floor sits above
+   * "fit" and a fit-sized overview is impossible on any screen size. */
+  private coverZoom(): number {
+    // The zoom at which the map fills the viewport in BOTH axes (on a very
+    // wide, short window "fit" is tiny because it is limited by height).
+    return Math.max(this.viewW / this.worldW, this.viewH / this.worldH);
+  }
+
+  private minZoom(): number {
+    return this.coverZoom() * 1.2;
   }
 
   private modeZoom(): number {
-    // Default view: the whole battlefield, a notch closer than "fit" (fit
-    // reads too small on wide screens); the wheel zooms between fit and 2.4x
-    // and the minimap navigates when zoomed.
-    return this.fitZoom() * 1.55;
+    // Default view: a notch closer than the floor; the wheel zooms between
+    // minZoom and 2.4x and the minimap navigates.
+    return this.coverZoom() * 1.5;
   }
 
   private resetCamera(): void {
@@ -275,7 +283,7 @@ export class MapRenderer {
       if (this.worldW <= 0) return;
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      const next = Math.min(2.4, Math.max(this.fitZoom(), this.zoom * factor));
+      const next = Math.min(2.4, Math.max(this.minZoom(), this.zoom * factor));
       if (next === this.zoom) return;
       const wx = (e.offsetX - this.root.x) / this.zoom;
       const wy = (e.offsetY - this.root.y) / this.zoom;
