@@ -83,6 +83,11 @@ def main() -> None:
         for s in shouts:
             print(f"[bridge] {label} order from the bench: \"{s}\"", flush=True)
         model = args.model or req.get("model") or "haiku"
+        # accept full ids too ("claude-haiku-4-5" -> "haiku")
+        for alias in ("haiku", "sonnet", "opus"):
+            if alias in model:
+                model = alias
+                break
         budget = max(5.0, float(req.get("timeout_s", 40)) - 2.0)
         try:
             text = ask_claude(req["system"], req["user"], model, budget, workdir)

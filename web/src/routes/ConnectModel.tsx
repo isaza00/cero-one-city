@@ -60,7 +60,11 @@ export default function ConnectModel() {
       </p>
       <form onSubmit={submit} className="card">
         <label>Provider</label>
-        <select value={provider} onChange={(e) => { setProvider(e.target.value); }}>
+        <select value={provider} onChange={(e) => {
+          setProvider(e.target.value);
+          if (e.target.value === "claude-code") setModel("haiku");
+          else if (e.target.value === "mock") setModel("boom");
+        }}>
           <option value="anthropic">Claude (Anthropic)</option>
           <option value="openai">OpenAI</option>
           <option value="google">Gemini (Google)</option>
