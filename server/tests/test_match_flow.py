@@ -140,13 +140,14 @@ async def test_shout_limits(user_client, app):
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "turn_limit"
 
-    # One per turn is fine, up to the per-match cap of 6.
-    for i in range(1, 6):
+    # One per turn is fine, up to the per-match cap (settings.shout_match_limit).
+    from app.routers.matches import MATCH_SHOUT_LIMIT
+    for i in range(1, MATCH_SHOUT_LIMIT):
         await set_turn(i)
         r = await c.post(f"/api/matches/{match_id}/shout", json={
             "agent_id": agent["id"], "text": f"Hold the truce! ({i})"})
         assert r.status_code == 200, r.text
-    await set_turn(6)
+    await set_turn(MATCH_SHOUT_LIMIT)
     r = await c.post(f"/api/matches/{match_id}/shout", json={
         "agent_id": agent["id"], "text": "One too many"})
     assert r.status_code == 409
