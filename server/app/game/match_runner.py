@@ -138,7 +138,16 @@ class MatchRunner:
         if agent.kind == "remote":
             return Seat(mp=mp, agent=agent, kind="remote")
 
+        config = (await self.db.execute(
+            select(AgentModelConfig).where(AgentModelConfig.agent_id == agent.id)
+        )).scalar_one_or_none()
+
         if agent.is_house:
+            if match.format == "practice":
+                # Practice is a training ground: the house fields its calmest bot
+                # (turtle never attacks before siege), so the opening stays slow.
+                return Seat(mp=mp, agent=agent, kind="mock",
+                            bot=BOTS["turtle"](mp.player_index, match.map_seed))
             if settings.house_api_key:
                 model = (settings.house_model_strong if agent.house_tier == "elite"
                          else settings.house_model_cheap)
@@ -153,7 +162,10 @@ class MatchRunner:
             return Seat(mp=mp, agent=agent, kind="mock",
                         bot=BOTS[bot_name](mp.player_index, match.map_seed))
 
-        if match.format == "practice" and not agent.is_house:
+        # Practice: the game pays a model ONLY for agents that have no brain of
+        # their own; an agent with a connected model (or the mock/claude-code
+        # providers) plays with it, exactly like in a league match.
+        if match.format == "practice" and not agent.is_house and config is None:
             if settings.practice_api_key:
                 hosted = HostedAgentCtx(**common, provider=settings.practice_provider,
                                         model=settings.practice_model,
@@ -165,9 +177,6 @@ class MatchRunner:
             return Seat(mp=mp, agent=agent, kind="mock",
                         bot=BOTS["boom"](mp.player_index, match.map_seed))
 
-        config = (await self.db.execute(
-            select(AgentModelConfig).where(AgentModelConfig.agent_id == agent.id)
-        )).scalar_one_or_none()
         if config is None:
             return Seat(mp=mp, agent=agent, kind="mock",
                         bot=BOTS["random"](mp.player_index, match.map_seed))
