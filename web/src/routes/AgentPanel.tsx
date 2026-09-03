@@ -68,7 +68,13 @@ export default function AgentPanel() {
           <div className="col">
             <span className="big">{agent.name}</span>{" "}
             <span className="badge">{lineageLabel(agent.lineage)}</span>
-            <span className="badge">{agent.kind === "hosted" ? "AI model" : "your code"}</span>
+            {agent.kind === "hosted"
+              ? <Link to={`/agents/${agent.id}/connect`} className="badge" title="change the model that plays as this agent">
+                  {agent.model_declared
+                    ? agent.model_declared.replace("claude-code/", "Claude Code · ")
+                    : "no model yet - connect one"} ✎
+                </Link>
+              : <Link to={`/agents/${agent.id}/remote-setup`} className="badge">your code ✎</Link>}
             {agent.title && <span className="badge warn">{agent.title}</span>}
             <div className="hint" style={{ marginTop: 6 }}>
               Level {agent.level} · {agent.xp} XP · Elo 1v1 {agent.elo_by_format["1v1"]}
