@@ -187,6 +187,10 @@ class MatchRunner:
             day_cap_micros=config.per_day_cap_usd_cents * 10_000)
         if config.max_tokens_override:
             hosted.max_tokens = config.max_tokens_override
+        if config.provider == "claude-code":
+            # A local Claude Code session answers through the bridge: slower than
+            # an API call, and a simulation - give it the relaxed local deadline.
+            hosted.deadline_s = max(hosted.deadline_s, settings.local_model_deadline_s)
         return Seat(mp=mp, agent=agent, kind="hosted", hosted=hosted)
 
     # ------------------------------------------------------------------- loop
@@ -229,7 +233,8 @@ class MatchRunner:
                 if parsed is None:
                     seat.mp.missed_streak += 1
                     seat.mp.missed_total += 1
-                    if seat.mp.missed_streak >= 3 and seat.kind != "mock":
+                    local_brain = seat.hosted is not None and seat.hosted.provider == "claude-code"
+                    if seat.mp.missed_streak >= 3 and seat.kind != "mock" and not local_brain:
                         forfeits.append(idx)
                         seat.mp.status = "abandoned"
                     orders_by_player[idx] = []

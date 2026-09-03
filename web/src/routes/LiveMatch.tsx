@@ -36,6 +36,7 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
   const [text, setText] = useState("");
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [used, setUsed] = useState(0);
+  const [limit, setLimit] = useState(20);
   const [error, setError] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -50,9 +51,10 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
     if (!line) return;
     setError(null);
     try {
-      const r = await post<{ shout: { match_used: number } }>(
+      const r = await post<{ shout: { match_used: number; match_limit?: number } }>(
         `/api/matches/${matchId}/shout`, { agent_id: agentId, text: line });
       setUsed(r.shout.match_used);
+      if (r.shout.match_limit) setLimit(r.shout.match_limit);
       setMsgs((m) => [...m,
         { from: "you", text: line, turn },
         { from: "system",
@@ -66,11 +68,12 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
 
   return (
     <div className="side-section agent-chat">
-      <h3>Talk to {agentName} <span className="hint">({used}/6)</span></h3>
+      <h3>Talk to {agentName} <span className="hint">({used}/{limit})</span></h3>
       <p className="hint">
-        You're the coach, not the pilot: your agent hears you, then does what IT
-        thinks is best. One message per turn. Rivals see that you spoke - never
-        what you said.
+        You're the general, not the pilot: say what you want ("attack their core",
+        "defend", "more workers", "obreros al ataque") and your agent turns it into
+        orders next turn, resolving who and where by itself. One message per turn.
+        Rivals see that you spoke - never what you said.
       </p>
       <div className="chat-log" ref={boxRef}>
         {msgs.map((m, i) => (
@@ -82,11 +85,11 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
       </div>
       {error && <div className="error">{error}</div>}
       <form onSubmit={send} className="chat-input-row">
-        <input value={text} maxLength={200} disabled={finished || used >= 6}
+        <input value={text} maxLength={200} disabled={finished || used >= limit}
                placeholder={finished ? "Match is over"
                  : "Hold the truce... push their workers..."}
                onChange={(e) => setText(e.target.value)} />
-        <button type="submit" disabled={finished || !text.trim() || used >= 6}>
+        <button type="submit" disabled={finished || !text.trim() || used >= limit}>
           Send
         </button>
       </form>

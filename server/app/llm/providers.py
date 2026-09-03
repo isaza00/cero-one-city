@@ -1,4 +1,5 @@
-"""Provider adapters (Anthropic, OpenAI, Google, OpenRouter) over raw HTTPS.
+"""Provider adapters (Anthropic, OpenAI, Google, OpenRouter) over raw HTTPS, plus
+"claude-code": a Redis bridge to the owner's local Claude Code session.
 
 Each adapter returns (parsed_json_or_None, raw_text, usage) and never raises on
 model output problems - only on transport/API errors (httpx exceptions), which
@@ -54,6 +55,8 @@ async def complete(provider: str, *, api_key: str, model: str,
     elif provider == "google":
         result = await _google(api_key, model, system_blocks, user, schema,
                                max_tokens, timeout_s)
+    elif provider == "claude-code":
+        result = await _claude_code_bridge(model, system_blocks, user, timeout_s)
     else:
         raise ValueError(f"unknown provider {provider}")
     result.latency_ms = int((time.perf_counter() - t0) * 1000)
@@ -156,3 +159,36 @@ def parse_or_none(text: str) -> dict | None:
         return obj if isinstance(obj, dict) else None
     except json.JSONDecodeError:
         return extract_json(text)
+
+
+# ------------------------------------------------------------ claude-code bridge
+
+BRIDGE_REQUESTS = "llm:bridge:req"      # list: JSON requests for the local bridge
+BRIDGE_REPLY = "llm:bridge:res:{id}"    # list per request: the model's reply text
+_bridge_redis = None
+
+
+async def _claude_code_bridge(model: str, system_blocks: list[str], user: str,
+                              timeout_s: float) -> LLMResult:
+    """Hand the turn to a bridge running on the owner's machine
+    (server/tools/claude_bridge.py), which answers with the local Claude Code
+    session. No key, no cost ledger; a silent bridge means a lost turn."""
+    global _bridge_redis
+    import uuid
+
+    import redis.asyncio as aioredis
+
+    from app.settings import get_settings
+    if _bridge_redis is None:
+        _bridge_redis = aioredis.from_url(get_settings().redis_url)
+    req_id = uuid.uuid4().hex
+    payload = json.dumps({"id": req_id, "model": model, "system": "\n\n".join(system_blocks),
+                          "user": user, "timeout_s": timeout_s})
+    reply_key = BRIDGE_REPLY.format(id=req_id)
+    await _bridge_redis.rpush(BRIDGE_REQUESTS, payload)
+    await _bridge_redis.expire(BRIDGE_REQUESTS, 300)
+    res = await _bridge_redis.blpop(reply_key, timeout=max(1, int(timeout_s)))
+    if not res:
+        raise TimeoutError("claude-code bridge did not answer (is claude_bridge.py running?)")
+    text = res[1].decode() if isinstance(res[1], bytes) else str(res[1])
+    return LLMResult(parsed=extract_json(text), text=text)

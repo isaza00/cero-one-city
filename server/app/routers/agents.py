@@ -41,7 +41,8 @@ from cero_engine.rules import LINEAGES, MAP_SIZE_1V1, MAX_TURNS, RULESET_VERSION
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
-PROVIDERS = ("anthropic", "openai", "google", "openrouter", "mock")
+PROVIDERS = ("anthropic", "openai", "google", "openrouter", "mock", "claude-code")
+KEYLESS = ("mock", "claude-code")  # no API key: scripted bot / the owner's own Claude Code
 HOUSE_PRACTICE_ROTATION = ("sprocket", "fuse", "rivet")
 
 
@@ -267,7 +268,7 @@ async def set_model(agent_id: uuid.UUID, body: ModelBody,
 
     api_key_id = config.api_key_id if config else None
     raw_key = ""
-    if body.provider != "mock":
+    if body.provider not in KEYLESS:
         if body.api_key:
             nonce, ciphertext = encrypt(body.api_key)
             key_row = ApiKey(user_id=user.id, provider=body.provider,
@@ -301,6 +302,12 @@ async def set_model(agent_id: uuid.UUID, body: ModelBody,
 
     if body.provider == "mock":
         test = {"ok": True, "latency_ms": 0, "est_cost_per_match_usd_cents": 0}
+    elif body.provider == "claude-code":
+        # probe the local bridge: ok only while `python server/tools/claude_bridge.py` runs
+        test = await test_key(db, agent.id, body.provider, body.model, "")
+        test["est_cost_per_match_usd_cents"] = 0
+        if not test.get("ok"):
+            test["error"] = "bridge not answering: run `python server/tools/claude_bridge.py` on this machine"
     else:
         test = await test_key(db, agent.id, body.provider, body.model, raw_key)
     config.last_test_at = datetime.now(timezone.utc)

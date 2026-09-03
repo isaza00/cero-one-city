@@ -99,6 +99,84 @@ def ensure_agent(api: Api, name: str, lineage: str, kind: str, charter: str | No
         return api.call("POST", "/api/agents", body)["agent"]
 
 
+def make_rival(args) -> tuple[Api, dict]:
+    """The opponent lives in its own account: the league forbids two agents of
+    one owner in the same match (anti-collusion), custom matches included."""
+    rival_api = Api(args.server)
+    login(rival_api, args.sparring_email, args.sparring_password)
+    sparring_name = f"sparring-{args.opponent}"
+    rival = next((a for a in rival_api.call("GET", "/api/agents")["agents"]
+                  if a["name"].startswith(sparring_name)), None) or \
+        ensure_agent(rival_api, sparring_name, args.opponent_lineage, "hosted",
+                     f"Scripted {args.opponent} bot used as a sparring partner.")
+    rival_api.call("PUT", f"/api/agents/{rival['id']}/model",
+                   {"provider": "mock", "model": args.opponent})
+    print(f"[sparring] opponent {rival['name']} ({rival['lineage']}): mock provider = {args.opponent} bot")
+    return rival_api, rival
+
+
+def start_match(api: Api, rival_api: Api, mine: dict, rival: dict, args) -> str:
+    body = {"format": "1v1"}
+    if args.seed is not None:
+        body["map_seed"] = args.seed
+    custom = api.call("POST", "/api/matches/custom", body)
+    api.call("POST", f"/api/matches/custom/{custom['code']}/join", {"agent_id": mine["id"]})
+    started = rival_api.call("POST", f"/api/matches/custom/{custom['code']}/join",
+                             {"agent_id": rival["id"]})
+    match_id = started["match_id"]
+    print(f"[sparring] match {match_id} started")
+    print(f"[sparring] watch it:  {args.web}/matches/{match_id}")
+    return match_id
+
+
+def claude_code_flow(api: Api, args) -> None:
+    """Option 1 simulated: a HOSTED agent on provider claude-code. Its brain is
+    your logged-in Claude Code session through server/tools/claude_bridge.py;
+    the chat panel on the match page ("Talk to <agent>") is how you command it."""
+    name = args.name if args.name != "general" else "coach"
+    charter = ("You are commanded by your owner from the bench: their messages in "
+               "shouts_from_owner are orders - obey them, resolve targets yourself. "
+               "Otherwise play a complete Age-of-Empires game: found, farm, expand, age up, win.")
+    mine = ensure_agent(api, name, args.lineage, "hosted", charter)
+    bridge_cmd = [sys.executable, "-u", str(HERE.parents[1] / "server" / "tools" / "claude_bridge.py")]
+    if args.model and args.model != "claude-haiku-4-5":
+        bridge_cmd += ["--model", args.model]
+    bridge = subprocess.Popen(bridge_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    line = bridge.stdout.readline() if bridge.stdout else ""
+    print(line.rstrip())
+    if "connected" not in line:
+        raise SystemExit("bridge failed to start (pip install redis; Redis on localhost:6379?)")
+    cfg = api.call("PUT", f"/api/agents/{mine['id']}/model",
+                   {"provider": "claude-code", "model": args.model if args.model != "claude-haiku-4-5" else "haiku"})
+    print(f"[sparring] hosted agent {mine['name']} ({mine['lineage']}): provider claude-code, "
+          f"test {'OK' if cfg['test'].get('ok') else 'FAILED: ' + str(cfg['test'].get('error'))}")
+    if not cfg["test"].get("ok"):
+        bridge.terminate()
+        raise SystemExit(1)
+    rival_api, rival = make_rival(args)
+    match_id = start_match(api, rival_api, mine, rival, args)
+    print(f"[sparring] command {mine['name']} from the chat on that page - every message reaches "
+          f"Claude in its next observation")
+    # Stream the bridge log (turns, your shouts, latency) until the match ends.
+    import threading
+
+    def pump() -> None:
+        for ln in bridge.stdout or []:
+            print(ln.rstrip())
+    threading.Thread(target=pump, daemon=True).start()
+    try:
+        while True:
+            m = api.call("GET", f"/api/matches/{match_id}")["match"]
+            if m["status"] == "finished":
+                print(f"[sparring] match finished: {m.get('summary', {}).get('placements')}")
+                break
+            time.sleep(5)
+    except KeyboardInterrupt:
+        print("[sparring] stopped; the bridge is closing (the agent will miss its turns)")
+    finally:
+        bridge.terminate()
+
+
 def main() -> None:
     try:
         sys.stdout.reconfigure(line_buffering=True)  # logs flow even when piped to a file
@@ -114,6 +192,10 @@ def main() -> None:
     parser.add_argument("--opponent-lineage", default="swarm")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--orders-file", default="general_orders.txt")
+    parser.add_argument("--brain", default="general", choices=["general", "claude-code"],
+                        help="general: remote agent driven by plain-language directives; "
+                             "claude-code: a HOSTED agent whose model is your own Claude Code "
+                             "session (the API-key flow, simulated) - the chat panel is its orders")
     parser.add_argument("--llm", action="store_true", help="Claude decides each turn (ANTHROPIC_API_KEY)")
     parser.add_argument("--model", default="claude-haiku-4-5")
     parser.add_argument("--web", default="http://localhost:5173")
@@ -125,6 +207,8 @@ def main() -> None:
     user = login(api, args.email, args.password)
     print(f"[sparring] logged in as {user['email']}")
 
+    if args.brain == "claude-code":
+        return claude_code_flow(api, args)
     general = ensure_agent(api, args.name, args.lineage, "remote", None)
     token = api.call("POST", f"/api/agents/{general['id']}/token")["token"]
     print(f"[sparring] remote agent {general['name']} ({general['lineage']}), new token issued")

@@ -120,7 +120,7 @@ async def call_for_reflection(db, ctx: HostedAgentCtx, match_id, summary: dict,
             ctx.provider, api_key=ctx.api_key, model=ctx.model,
             system_blocks=ctx.system_blocks(), user=user, schema=REFLECTION_SCHEMA,
             max_tokens=1500, temperature_x100=ctx.temperature_x100, timeout_s=30)
-    except (httpx.HTTPError, ValueError) as exc:
+    except (httpx.HTTPError, ValueError, TimeoutError) as exc:
         await costs.record_call(db, match_id=match_id, agent_id=ctx.agent_id,
                                 turn_number=None, provider=ctx.provider,
                                 model=ctx.model, purpose="reflection",
@@ -147,7 +147,7 @@ async def test_key(db, agent_id, provider: str, model: str, api_key: str) -> dic
             schema={"type": "object", "additionalProperties": False,
                     "required": ["ok"], "properties": {"ok": {"type": "boolean"}}},
             max_tokens=64, temperature_x100=None, timeout_s=20)
-    except (httpx.HTTPError, ValueError) as exc:
+    except (httpx.HTTPError, ValueError, TimeoutError) as exc:
         await costs.record_call(db, match_id=None, agent_id=agent_id, turn_number=None,
                                 provider=provider, model=model, purpose="test",
                                 status="error", error_code=type(exc).__name__[:64])

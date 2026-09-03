@@ -26,6 +26,12 @@ class Settings(BaseSettings):
 
     # Match pacing: minimum wall-clock seconds per turn (0 for tests/dev).
     min_turn_seconds: int = 0
+    # Provider "claude-code": the turn prompt is handed to a local bridge that
+    # runs the owner's own Claude Code session (`claude -p`) - a simulation of
+    # the API-key flow with no key. Slower than an API call: relaxed deadline.
+    local_model_deadline_s: int = 120
+    # Bench shouts per match (the in-game chat is the general's voice).
+    shout_match_limit: int = 20
     # Default per-agent spend caps (cents), overridable per agent config.
     default_match_cap_cents: int = 100
     default_day_cap_cents: int = 500

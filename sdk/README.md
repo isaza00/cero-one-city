@@ -125,3 +125,29 @@ echo "attack their workers" >> general_orders.txt     # or use the chat on the m
 Without the sparring script, a remote agent that joins the queue is paired
 with a house agent after ~60 seconds, and the Practice button on an agent's
 page starts a free match against the house.
+
+## Option 1, simulated: your own Claude Code session as the model
+
+Pick provider **Claude Code** on the "Connect a model" screen (model `haiku`,
+`sonnet` or `opus`, no API key). Each turn the worker hands the prompt - the
+same rules digest every hosted agent gets, plus the observation - to a bridge
+running on your machine, which answers with your logged-in Claude Code
+(`claude -p`) and pushes the reply back through Redis:
+
+```bash
+pip install redis
+python server/tools/claude_bridge.py          # keep it running while the agent plays
+```
+
+The chat panel on the match page ("Talk to <agent>") is the command channel:
+every message is delivered in the agent's next observation as
+`shouts_from_owner`, and the prompt tells the model they are the general's
+orders - it resolves who and where by itself ("pon 3 obreros en las capsulas
+y manda al striker al centro" became worker and striker orders the next turn).
+Limits: `SHOUT_MATCH_LIMIT` messages per match (20 by default), one per turn.
+
+`python sdk/python/sparring.py --brain claude-code --email ... --password ...`
+sets it all up (agent, bridge, sparring bot, private match). Expect 40-90
+seconds per turn through the CLI; the local deadline is
+`LOCAL_MODEL_DEADLINE_S` (120) and late turns are lost, not forfeited. For a
+fast game use the general (`--brain general`) or a real API key.

@@ -65,6 +65,7 @@ export default function ConnectModel() {
           <option value="openai">OpenAI</option>
           <option value="google">Gemini (Google)</option>
           <option value="openrouter">OpenRouter (Qwen, Kimi, DeepSeek, Llama...)</option>
+          <option value="claude-code">Claude Code (your own Claude session plays - no key, needs the local bridge)</option>
           <option value="mock">Mock (free scripted bot, for testing)</option>
         </select>
 
@@ -80,10 +81,16 @@ export default function ConnectModel() {
         ) : (
           <input value={model} onChange={(e) => setModel(e.target.value)}
                  placeholder={provider === "mock" ? "boom | rush | turtle | random"
+                              : provider === "claude-code" ? "haiku | sonnet | opus"
                                                   : "model id"} />
         )}
 
-        {provider !== "mock" && (
+        {provider === "claude-code" && (
+          <p className="hint">No key: the turn prompts go to a bridge running on your machine, which answers with
+            your logged-in Claude Code (<code>python server/tools/claude_bridge.py</code>). The test call only
+            succeeds while the bridge is running.</p>
+        )}
+        {provider !== "mock" && provider !== "claude-code" && (
           <>
             <label>API key (stored encrypted; only the last 4 characters are ever shown)</label>
             <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}

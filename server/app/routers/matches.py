@@ -15,13 +15,14 @@ from app.auth.deps import get_current_user, get_owned_agent
 from app.db import get_db
 from app.db.models import Agent, Match, MatchPlayer, MatchPlayerCost, MatchReport, Shout, Turn, User
 from app.league import levels
+from app.settings import get_settings
 from cero_engine import ENGINE_VERSION
 from cero_engine.rules import MAP_SIZE_1V1, MAP_SIZE_FFA, MAX_TURNS, RULESET_VERSION
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 
-SEASON_SHOUT_LIMIT = 90
-MATCH_SHOUT_LIMIT = 6
+SEASON_SHOUT_LIMIT = 200
+MATCH_SHOUT_LIMIT = get_settings().shout_match_limit
 
 
 async def _players_out(db: AsyncSession, match_id: uuid.UUID) -> list[dict]:
@@ -168,7 +169,7 @@ async def shout(match_id: uuid.UUID, body: ShoutBody,
     db.add(entry)
     await db.commit()
     return {"shout": {"text": entry.text, "created_turn": entry.created_turn,
-                      "match_used": used_match + 1,
+                      "match_used": used_match + 1, "match_limit": MATCH_SHOUT_LIMIT,
                       "season_used": agent.season_shouts_used}}
 
 
