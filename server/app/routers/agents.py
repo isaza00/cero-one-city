@@ -517,7 +517,8 @@ async def leave_queue(agent_id: uuid.UUID, user: User = Depends(get_current_user
 async def start_practice(agent_id: uuid.UUID, user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_db)) -> dict:
     agent = await get_owned_agent(agent_id, user, db)
-    if user.practice_remaining <= 0:
+    unlimited = user.role == "admin"  # the owner's dev account: practice never runs out
+    if user.practice_remaining <= 0 and not unlimited:
         raise HTTPException(403, detail={"code": "practice_exhausted",
                                          "message": "no practice matches left"})
     kill = (await db.execute(select(Setting).where(
@@ -536,7 +537,8 @@ async def start_practice(agent_id: uuid.UUID, user: User = Depends(get_current_u
     if rival is None:
         raise HTTPException(503, detail={"code": "no_house",
                                          "message": "house agents not seeded"})
-    user.practice_remaining -= 1
+    if not unlimited:
+        user.practice_remaining -= 1
     match = Match(season_id=None, format="practice", status="forming", is_ranked=False,
                   map_seed=secrets.randbits(48), map_size=MAP_SIZE_1V1,
                   max_turns=MAX_TURNS, engine_version=ENGINE_VERSION,
