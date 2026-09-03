@@ -111,7 +111,7 @@ class General(BoomBot):
     def directive(self, raw: str) -> None:
         """Parse one owner message into stance / preferences / one-shot orders."""
         before = len(self.feedback)
-        for part in re.split(r"[;,]|\bthen\b|\by luego\b", raw.lower()):
+        for part in re.split(r"[;,]|\bthen\b|\by luego\b|\by\b|\band\b", raw.lower()):
             text = part.strip()
             if not text:
                 continue
@@ -439,7 +439,10 @@ async def run(server: str, token: str, fmt: str | None, orders_file: str | None,
                     general.directive(line)
                     directives.append(line)
                 directives.extend(obs.get("shouts_from_owner") or [])
+                general.feedback = []
                 orders = general.act(obs)
+                reply = " | ".join(ln for ln in general.feedback
+                                   if "order from" not in ln)[:400] or None
                 if llm_model:
                     budget = msg["deadline_ms"] / 1000 - 1.2 - (time.perf_counter() - t0)
                     loop = asyncio.get_running_loop()
@@ -451,7 +454,7 @@ async def run(server: str, token: str, fmt: str | None, orders_file: str | None,
                               flush=True)
                 await ws.send(json.dumps({
                     "type": "orders", "match_id": msg["match_id"], "turn": msg["turn"],
-                    "orders": orders, "locker_b64": locker}))
+                    "orders": orders, "locker_b64": locker, "reply": reply}))
                 eco = obs.get("economy", {})
                 if obs["turn"] % 5 == 0:
                     print(f"[general] T{obs['turn']} E{obs['resources']['energy']} "

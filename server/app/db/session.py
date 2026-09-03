@@ -31,6 +31,11 @@ async def init_db() -> None:
     from app.db.models import Base
     async with engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all never alters existing tables: columns added after a table
+        # first shipped are applied here, idempotently (Postgres).
+        from sqlalchemy import text
+        await conn.execute(text("ALTER TABLE shouts ADD COLUMN IF NOT EXISTS reply_text VARCHAR(400)"))
+        await conn.execute(text("ALTER TABLE shouts ADD COLUMN IF NOT EXISTS reply_turn INTEGER"))
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

@@ -187,6 +187,15 @@ export interface FeedLine {
   viz?: OrderViz[];
 }
 
+/** One message from the bench and, once the agent answered, its reply. */
+export interface ShoutOut {
+  text: string;
+  created_turn: number;
+  delivered_turn: number | null;
+  reply_text: string | null;
+  reply_turn: number | null;
+}
+
 export interface ScoreboardRow {
   player_index: number;
   agent_id: string | null;

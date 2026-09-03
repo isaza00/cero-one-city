@@ -895,3 +895,7 @@ tr:hover td { background: rgba(255, 255, 255, 0.03); }
   .hud-plate, .hud-plate.inline { grid-column: 1 / -1; order: -1; }
   .hud-block.right { justify-self: stretch; }
 }
+
+/* the agent answering from the field */
+.chat-msg.agent { border-left: 3px solid var(--amber); background: rgba(255, 176, 32, 0.08); }
+.chat-agent-name { color: var(--amber); font-weight: 800; }

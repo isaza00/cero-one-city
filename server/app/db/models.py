@@ -246,6 +246,9 @@ class Shout(Base):
     text: Mapped[str] = mapped_column(String(200))
     created_turn: Mapped[int] = mapped_column(Integer)
     delivered_turn: Mapped[int | None] = mapped_column(Integer)
+    # The agent's answer from the field (the `reply` field of its orders).
+    reply_text: Mapped[str | None] = mapped_column(String(400))
+    reply_turn: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = created_at_col()
 
 

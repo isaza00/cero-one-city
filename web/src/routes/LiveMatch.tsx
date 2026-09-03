@@ -9,7 +9,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { get, post } from "../api/client";
-import type { AgentPublic, EntityOut, GameState, PlayerOut } from "../api/types";
+import type { AgentPublic, EntityOut, GameState, PlayerOut, ShoutOut } from "../api/types";
 import ActionBox from "../components/ActionBox";
 import { Commentary } from "../components/bits";
 import {
@@ -28,7 +28,7 @@ import MapView, { MapController } from "../pixi/MapView";
 import { useAuth } from "../store/auth";
 import { useSpectate } from "../ws/useSpectate";
 
-interface ChatMsg { from: "you" | "system"; text: string; turn: number }
+interface ChatMsg { from: "you" | "agent" | "system"; text: string; turn: number }
 
 function AgentChat({ matchId, agentId, agentName, turn, finished }: {
   matchId: string; agentId: string; agentName: string; turn: number; finished: boolean;
@@ -39,6 +39,29 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
   const [limit, setLimit] = useState(20);
   const [error, setError] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+
+  // The conversation lives on the server: your messages, when they were
+  // delivered, and the agent's `reply` from the field. Refresh every turn.
+  const load = async () => {
+    try {
+      const r = await get<{ shouts: ShoutOut[]; limit: number }>(
+        `/api/matches/${matchId}/shouts?agent_id=${agentId}`);
+      setUsed(r.shouts.length);
+      setLimit(r.limit);
+      const out: ChatMsg[] = [];
+      for (const s of r.shouts) {
+        out.push({ from: "you", text: s.text, turn: s.created_turn });
+        if (s.reply_text) out.push({ from: "agent", text: s.reply_text, turn: s.reply_turn ?? s.created_turn });
+        else if (s.delivered_turn == null || s.delivered_turn >= turn) {
+          out.push({ from: "system", text: `Delivered - ${agentName} reads it on turn ${s.delivered_turn ?? "next"} and answers here.`, turn: s.created_turn });
+        } else {
+          out.push({ from: "system", text: `Read on turn ${s.delivered_turn} - no answer this time.`, turn: s.created_turn });
+        }
+      }
+      setMsgs(out);
+    } catch { /* keep what we have */ }
+  };
+  useEffect(() => { void load(); }, [matchId, agentId, turn]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = boxRef.current;
@@ -55,12 +78,8 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
         `/api/matches/${matchId}/shout`, { agent_id: agentId, text: line });
       setUsed(r.shout.match_used);
       if (r.shout.match_limit) setLimit(r.shout.match_limit);
-      setMsgs((m) => [...m,
-        { from: "you", text: line, turn },
-        { from: "system",
-          text: `Delivered. ${agentName} reads this next turn and decides on its own.`,
-          turn }]);
       setText("");
+      void load();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -79,6 +98,7 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
         {msgs.map((m, i) => (
           <div key={i} className={`chat-msg ${m.from}`}>
             {m.from === "system" && <span className="chat-sys-icon">📡 </span>}
+            {m.from === "agent" && <b className="chat-agent-name">{agentName} · T{m.turn}: </b>}
             {m.text}
           </div>
         ))}

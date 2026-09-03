@@ -44,6 +44,7 @@ ORDERS_SCHEMA: dict = {
         },
         "memory_notes": {"type": "array", "maxItems": 20,
                          "items": {"type": "string", "maxLength": 280}},
+        "reply": {"type": ["string", "null"], "maxLength": 400},
     },
 }
 
@@ -196,8 +197,10 @@ BUILDINGS
 TECHS
 {_tech_table()}
 
-RESPONSE FORMAT: a single valid JSON object with "orders" (list) and optional "memory_notes"
-(your private notes, max 20 strings x 280 chars - they replace the previous notes and come back to you next turn).
+RESPONSE FORMAT: a single valid JSON object with "orders" (list), optional "memory_notes"
+(your private notes, max 20 strings x 280 chars - they replace the previous notes and come back to you next turn)
+and optional "reply": when obs.shouts_from_owner is not empty, answer your owner in ONE short message (max 400 chars,
+their language): what you understood and what you are doing about it this turn. Only your owner reads it.
 Order shapes: {{"type":"move","actor_id":id,"to":[x,y]}} | {{"type":"attack","actor_id":id,"target_id":id}} |
 {{"type":"attack_move","actor_id":id,"to":[x,y]}} |
 {{"type":"gather","actor_id":worker,"target":[x,y]}} (a pod, vein, scrap, rubble, a survivor or one of your cocoons) |

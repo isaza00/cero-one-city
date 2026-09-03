@@ -173,6 +173,22 @@ async def shout(match_id: uuid.UUID, body: ShoutBody,
                       "season_used": agent.season_shouts_used}}
 
 
+@router.get("/{match_id}/shouts")
+async def my_shouts(match_id: uuid.UUID, agent_id: uuid.UUID,
+                    user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_db)) -> dict:
+    """The owner's side of the conversation with its agent: every message sent
+    this match, when it was delivered, and the agent's answer (`reply`)."""
+    agent = await get_owned_agent(agent_id, user, db)
+    rows = (await db.execute(select(Shout).where(
+        Shout.match_id == match_id, Shout.agent_id == agent.id)
+        .order_by(Shout.created_at))).scalars().all()
+    return {"shouts": [{"text": s.text, "created_turn": s.created_turn,
+                        "delivered_turn": s.delivered_turn, "reply_text": s.reply_text,
+                        "reply_turn": s.reply_turn} for s in rows],
+            "limit": MATCH_SHOUT_LIMIT}
+
+
 # --------------------------------------------------------------- custom matches
 
 class CustomBody(BaseModel):

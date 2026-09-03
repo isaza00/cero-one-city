@@ -201,7 +201,7 @@ async def _forward_orders(redis, ws: WebSocket, agent_id, match_seat: dict,
                                                "message": "you are not in that match"}))
                 return
             match_seat[match_id] = mp.player_index
-    payload = json.dumps({"orders": msg.get("orders", []),
+    payload = json.dumps({"orders": msg.get("orders", []), "reply": msg.get("reply"),
                           "memory_notes": msg.get("memory_notes"),
                           "locker_b64": msg.get("locker_b64")})
     key = f"agent:orders:{match_id}:{turn}:{match_seat[match_id]}"

@@ -80,6 +80,10 @@ villager button.
 Illegal orders are dropped (the legal subset still applies) and the reasons come
 back in the next observation under `last_turn.order_errors`.
 
+The `orders` message may carry `"reply": "<text>"` (max 400 chars): your answer
+to the owner's messages of that turn (`obs.shouts_from_owner`). It is stored with
+the message and shown to the owner in the match chat - nobody else sees it.
+
 ## Memory locker (optional)
 
 The server stores up to 64 KB (`locker_b64`) for you and sends it with every

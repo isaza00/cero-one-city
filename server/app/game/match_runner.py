@@ -237,6 +237,7 @@ class MatchRunner:
             orders_by_player: dict[int, list] = {}
             raw_orders_log: dict[str, list] = {}
             forfeits: list[int] = []
+            replies: dict[int, str] = {}   # player -> the agent's answer to its owner
             for idx, parsed in zip([i for i in self.seats if i in observations], results):
                 seat = self.seats[idx]
                 if parsed is None:
@@ -255,6 +256,9 @@ class MatchRunner:
                     notes = parsed.get("memory_notes") if isinstance(parsed, dict) else None
                     if seat.kind == "hosted" and isinstance(notes, list):
                         await save_memory_notes(self.db, self.match_id, seat.agent.id, notes)
+                    reply = parsed.get("reply") if isinstance(parsed, dict) else None
+                    if isinstance(reply, str) and reply.strip():
+                        replies[idx] = reply.strip()[:400]
 
             diplo_allowed = {idx: levels.diplo_actions(seat.mp.level_snapshot)
                              for idx, seat in self.seats.items()}
@@ -278,6 +282,7 @@ class MatchRunner:
                 order_errors={str(k): v for k, v in order_errors.items() if v},
                 events=events, feed=feed, resolved_in_ms=resolved_ms))
             match.current_turn = state.turn
+            await self._store_replies(replies, turn_no)
             for idx, seat in self.seats.items():
                 player = state.players[idx]
                 if not player.alive and seat.mp.status == "alive":
@@ -305,6 +310,21 @@ class MatchRunner:
         await reports.finalize_match(self.db, self.redis, match, state,
                                      {i: s for i, s in self.seats.items()},
                                      self.names, self.agent_ids)
+
+    async def _store_replies(self, replies: dict[int, str], turn_no: int) -> None:
+        """Attach each agent's `reply` to the shouts it answered (those delivered
+        in this turn's observation); the owner reads them in the match chat."""
+        from app.db.models import Shout
+        for idx, text in replies.items():
+            seat = self.seats.get(idx)
+            if seat is None:
+                continue
+            rows = (await self.db.execute(select(Shout).where(
+                Shout.match_id == self.match_id, Shout.agent_id == seat.agent.id,
+                Shout.delivered_turn == turn_no, Shout.reply_text.is_(None)))).scalars().all()
+            for row in rows:
+                row.reply_text = text
+                row.reply_turn = turn_no
 
     async def _collect_orders(self, match: Match, seat: Seat, turn_no: int,
                               obs: dict, game_budget_ok: bool) -> dict | None:
