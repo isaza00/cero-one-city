@@ -51,6 +51,8 @@ export default function CreateAgent() {
     setProvider(p);
     const first = models.find((m) => m.provider === p);
     if (first) setModel(first.model);
+    else if (p === "claude-code") setModel("haiku");
+    else if (p === "mock") setModel("boom");
   };
 
   const submit = async (e: FormEvent) => {
@@ -71,7 +73,7 @@ export default function CreateAgent() {
         navigate(`/agents/${agentId}/remote-setup`);
         return;
       }
-      if (apiKey.trim() || provider === "mock") {
+      if (apiKey.trim() || provider === "mock" || provider === "claude-code") {
         await put(`/api/agents/${agentId}/model`, {
           provider, model, api_key: apiKey.trim() || undefined,
           per_match_cap_usd_cents: matchCap, per_day_cap_usd_cents: dayCap,
@@ -175,6 +177,7 @@ export default function CreateAgent() {
               <option value="openai">OpenAI</option>
               <option value="google">Gemini (Google)</option>
               <option value="openrouter">OpenRouter (Qwen, Kimi, DeepSeek, Llama...)</option>
+              <option value="claude-code">Claude Code (your own Claude session plays - no key, needs the local bridge)</option>
               <option value="mock">Mock (free scripted bot, for testing)</option>
             </select>
             <label>Model</label>
@@ -189,9 +192,14 @@ export default function CreateAgent() {
             ) : (
               <input value={model} onChange={(e) => setModel(e.target.value)}
                      placeholder={provider === "mock" ? "boom | rush | turtle | random"
+                                  : provider === "claude-code" ? "haiku | sonnet | opus"
                                                       : "model id"} />
             )}
-            {provider !== "mock" && (
+            {provider === "claude-code" && (
+              <p className="hint">No key: turns are answered by your logged-in Claude Code through
+                <code> python server/tools/claude_bridge.py</code>, which must be running while it plays.</p>
+            )}
+            {provider !== "mock" && provider !== "claude-code" && (
               <>
                 <label>API key (stored encrypted; never shown again)</label>
                 <input type="password" value={apiKey}
