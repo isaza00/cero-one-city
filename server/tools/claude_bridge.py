@@ -61,12 +61,19 @@ def main() -> None:
         import redis
     except ImportError:
         raise SystemExit("pip install redis") from None
-    r = redis.from_url(args.redis)
+    # BLPOP blocks up to 5 s; the socket timeout must outlast it (newer
+    # redis-py versions default lower than that and die mid-wait).
+    r = redis.from_url(args.redis, socket_timeout=30, socket_connect_timeout=10)
     r.ping()
     workdir = tempfile.mkdtemp(prefix="cero-bridge-")  # an empty cwd: no repo context leaks in
     print(f"[bridge] connected to {args.redis}; waiting for turns (ctrl-c to stop)", flush=True)
     while True:
-        item = r.blpop(REQ_KEY, timeout=5)
+        try:
+            item = r.blpop(REQ_KEY, timeout=5)
+        except redis.exceptions.RedisError as exc:
+            print(f"[bridge] redis hiccup ({type(exc).__name__}); retrying", flush=True)
+            time.sleep(2)
+            continue
         if not item:
             continue
         req = json.loads(item[1])
