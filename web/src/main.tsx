@@ -4,10 +4,12 @@ import App from "./App";
 import "./styles.css";
 import { initSpritePack } from "./pixi/spritepack";
 import { initTerrainProps } from "./pixi/terrainprops";
+import { initGround } from "./pixi/ground";
 
 // Load the pixel-art sprite pack; falls back to procedural art until ready.
 initSpritePack().catch((e) => console.warn("sprite pack not loaded:", e));
 initTerrainProps().catch((e) => console.warn("terrain props not loaded:", e));
+initGround().catch((e) => console.warn("ground tiles not loaded:", e));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
