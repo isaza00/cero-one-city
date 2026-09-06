@@ -19,7 +19,7 @@ import {
 } from "../game/meta";
 import { PERSPECTIVE_ALL, exploredTilesFor, visibleTilesFor } from "../game/vision";
 import { getBuildingFrames, getUnitFrames, packReady } from "./spritepack";
-import { getPropTexture, propAnchor, propsReady } from "./terrainprops";
+import { getPropTexture, propAnchor, propVariant, propsReady } from "./terrainprops";
 import { getGroundTexture, groundReady } from "./ground";
 
 export const TILE_W = 64;   // diamond width in world px
@@ -86,10 +86,19 @@ interface Effect {
 
 export class MapRenderer {
   private app: Application | null = null;
-  private ground = new Container();    // pre-rendered ground diamonds (under everything)
+  // Pre-rendered ground diamonds, under everything. Cached as ONE texture at
+  // 1:1 so the camera scales a single sprite: thousands of diamonds cost one
+  // draw, and the atlas is only ever sampled texel-aligned, so zooming shows
+  // no seams between diamonds and no bleed between atlas cells.
+  private ground = new Container();
   private terrain = new Graphics();
-  private props = new Container();     // pre-rendered 3D terrain props (rocks, pods, scrap...)
+  private scrapG = new Graphics();     // procedural scrap fallback (dynamic, own key)
   private sprites = new Container();
+  // Pre-rendered 3D terrain props live INSIDE `sprites`, depth-sorted with the
+  // units: a robot behind a rock is hidden by it, one in front covers it.
+  private terrainProps: Sprite[] = []; // static: rocks, veins, pods, dead land
+  private scrapSprites: Sprite[] = []; // dynamic: scrap dropped by destroyed units
+  private scrapKey = "";
   private overlay = new Graphics();
   private selection = new Graphics();
   // Fog is a CANVAS overlay, not tile fills: round radial light around every
@@ -172,11 +181,11 @@ export class MapRenderer {
     }
     this.app = app;
     host.replaceChildren(app.canvas);
-    this.root.addChild(this.ground, this.terrain, this.props, this.decals, this.selection, this.sprites,
+    this.root.addChild(this.ground, this.terrain, this.scrapG, this.decals, this.selection, this.sprites,
                        this.industry, this.effectsLayer, this.overlay, this.fog);
     app.stage.addChild(this.root);
     this.sprites.sortableChildren = true;
-    this.props.sortableChildren = true;
+    this.ground.cacheAsTexture({ resolution: 1, antialias: false });
     app.ticker.add(() => this.tick(app.ticker.deltaMS));
     this.attachCameraControls(app.canvas);
   }
@@ -431,6 +440,7 @@ export class MapRenderer {
       this.worldW = state.size * TILE_W;
       this.worldH = state.size * TILE_H + TILE_H; // headroom for tall sprites
       this.terrainKey = "";
+      this.scrapKey = "";
       this.resetCamera();  // whole map, centered (MAP-VIEW-SPEC invariant 1)
     }
 
@@ -1148,17 +1158,22 @@ export class MapRenderer {
 
   // ----------------------------------------------------------------- terrain
 
-  /** Diamond terrain + patchwork + grid + scrap; redrawn only when it changes.
+  /** Diamond terrain + patchwork + grid + props; redrawn only when it changes
+   * (never during a match: the tiles are fixed, so the rebuild only happens on
+   * load, on a fog toggle and when an art pack finishes loading). Scrap is
+   * dynamic and keyed separately in renderScrap.
    * With fog active, the decorative dead land outside the map is NOT drawn:
    * beyond the edge there is only the same darkness as unexplored ground. */
   private renderTerrain(state: GameState, fogged: boolean): void {
-    const key = `${state.size}:${fogged}:${propsReady()}:${groundReady()}:${state.tiles.flat().join("")}:${Object.keys(state.scrap).join(",")}`;
+    this.renderScrap(state);
+    const key = `${state.size}:${fogged}:${propsReady()}:${groundReady()}:${state.tiles.flat().join("")}`;
     if (key === this.terrainKey) return;
     this.terrainKey = key;
     const g = this.terrain;
     g.clear();
-    this.props.removeChildren();
-    this.ground.removeChildren();
+    for (const s of this.ground.removeChildren()) s.destroy();
+    for (const s of this.terrainProps) s.destroy();
+    this.terrainProps = [];
     const size = state.size;
     const usePack = propsReady();
     const useGround = groundReady();
@@ -1181,7 +1196,7 @@ export class MapRenderer {
                                    + PLAIN_SHADES.length) % PLAIN_SHADES.length];
           if (!(useGround && this.placeGround(tx, ty, c, f))) this.diamond(g, c.x, c.y).fill(shade(raw, f));
           if (n === 13) { // collapsed slab out in the dead land
-            if (!(usePack && this.placeProp("deadland", tx * 3 + ty, c, f))) {
+            if (!(usePack && this.placeProp("deadland", tx * 3 + ty, tx, ty, c, f, this.terrainProps))) {
               g.rect(c.x - 7, c.y - 3, 13, 5).fill(shade(0x2c333e, f));
               g.rect(c.x - 3, c.y - 6, 6, 3).fill(shade(0x1c222d, f));
             }
@@ -1211,7 +1226,7 @@ export class MapRenderer {
         if (terrain === "plain") {
           if (n === 0) g.rect(c.x - 3, c.y + 2, 4, 2).fill(0x1f2937);
           if (n === 5) g.rect(c.x + 6, c.y - 3, 3, 2).fill(0x121826);
-        } else if (usePack && terrain !== "plain" && this.placeProp(terrain, x * 7 + y * 3, c, f)) {
+        } else if (usePack && this.placeProp(terrain, x * 7 + y * 3, x, y, c, f, this.terrainProps)) {
           // pre-rendered prop placed; nothing more to draw for this tile
         } else if (terrain === "blocked") {
           g.rect(c.x - 12, c.y - 5, 12, 6).fill(0x4d5766);
@@ -1256,11 +1271,26 @@ export class MapRenderer {
       g.moveTo(b1.x, b1.y).lineTo(b2.x, b2.y)
         .stroke({ width: 1, color: 0xffffff, alpha: 0.05 });
     }
+    this.ground.updateCacheTexture(); // bake the diamonds into the single ground texture
+  }
+
+  /** Scrap piles dropped by destroyed units. They come and go all match long,
+   * so they are keyed on their own: a new pile never rebuilds the (cached)
+   * ground or the static props. */
+  private renderScrap(state: GameState): void {
+    const key = `${state.size}:${propsReady()}:${Object.keys(state.scrap).join(",")}`;
+    if (key === this.scrapKey) return;
+    this.scrapKey = key;
+    const g = this.scrapG;
+    g.clear();
+    for (const s of this.scrapSprites) s.destroy();
+    this.scrapSprites = [];
+    const usePack = propsReady();
     for (const key2 of Object.keys(state.scrap)) {
       const [x, y] = key2.split(",").map(Number);
       const c = this.px(x, y);
-      const fs = 0.82 + ((x + y) / (2 * (size - 1))) * 0.34;
-      if (usePack && this.placeProp("scrap", x + y * 5, c, fs)) continue;
+      const fs = 0.82 + ((x + y) / (2 * (state.size - 1))) * 0.34;
+      if (usePack && this.placeProp("scrap", x + y * 5, x, y, c, fs, this.scrapSprites)) continue;
       g.ellipse(c.x, c.y + 2, 8, 4).fill(0x8d99ae);
       g.ellipse(c.x, c.y + 2, 3, 1.6).fill(0x39414e);
       g.rect(c.x + 5, c.y - 4, 4, 3).fill(0xaab4c4);
@@ -1278,18 +1308,25 @@ export class MapRenderer {
     return true;
   }
 
-  /** Place a pre-rendered terrain prop on tile center c. Returns false when the
-   * pack is not loaded (caller then draws the procedural fallback). */
-  private placeProp(kind: string, seed: number, c: { x: number; y: number }, f: number): boolean {
+  /** Place a pre-rendered terrain prop on tile (tx,ty) at center c, inside the
+   * unit layer and on the puppets' depth scale: a unit standing on the tile
+   * (+5) draws over the prop (+2), one on the row behind is covered by it.
+   * Returns false when the pack is not loaded (caller then draws the
+   * procedural fallback). */
+  private placeProp(kind: string, seed: number, tx: number, ty: number,
+                    c: { x: number; y: number }, f: number, into: Sprite[]): boolean {
     const tex = getPropTexture(kind, seed);
     if (!tex) return false;
     const s = new Sprite(tex);
     const a = propAnchor();
     s.anchor.set(a.x, a.y);
     s.position.set(c.x, c.y);
-    s.tint = shade(0xffffff, Math.min(1, f)); // far rows sit in the same haze as the ground
-    s.zIndex = c.y;
-    this.props.addChild(s);
+    const v = propVariant(seed);
+    s.scale.set(v.scale);
+    s.tint = shade(0xffffff, Math.min(1, f) * v.light); // far rows sit in the same haze as the ground
+    s.zIndex = (tx + ty) * 10 + 2;
+    this.sprites.addChild(s);
+    into.push(s);
     return true;
   }
 

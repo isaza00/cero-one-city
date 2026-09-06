@@ -10,3 +10,7 @@ Re-render a prop:  `blender -b -P blender_prop.py -- <vein|blocked|pod|rubble|sc
 
 Kinds: blocked, vein, pod (human energy capsules), rubble, scrap (dropped by
 destroyed units), deadland (decor outside the map, 2 variants).
+
+Variety per tile (scale and brightness jitter) comes from the renderer, not
+from extra renders; props are never mirrored because they all cast their
+shadow to the right.

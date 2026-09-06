@@ -23,13 +23,13 @@ export async function initTerrainProps(base = "/props"): Promise<void> {
   const res = await fetch(`${base}/props.json`);
   if (!res.ok) throw new Error(`terrain props manifest missing at ${base}/props.json`);
   const m = (await res.json()) as PropsManifest;
-  for (const files of Object.values(m.kinds)) {
-    for (const f of files) {
-      const tex = (await Assets.load(`${base}/${f}`)) as Texture;
-      tex.source.scaleMode = "linear"; // smooth pre-rendered art, not pixel art
-      textures.set(f, tex);
-    }
-  }
+  const files = [...new Set(Object.values(m.kinds).flat())];
+  const loaded = await Promise.all(files.map(async (f) => {
+    const tex = (await Assets.load(`${base}/${f}`)) as Texture;
+    tex.source.scaleMode = "linear"; // smooth pre-rendered art, not pixel art
+    return [f, tex] as const;
+  }));
+  for (const [f, tex] of loaded) textures.set(f, tex);
   manifest = m;
 }
 
@@ -51,4 +51,16 @@ export function getPropTexture(kind: string, seed = 0): Texture | null {
   if (!files || files.length === 0) return null;
   const f = files[((seed % files.length) + files.length) % files.length];
   return textures.get(f) ?? null;
+}
+
+/** Per-placement variation so a single render does not read as a stamp: a
+ * stable scale and brightness jitter derived from the seed. No mirroring:
+ * every prop is lit from the same side and casts its shadow to the right,
+ * so a flipped copy next to an unflipped one would give the scene two suns. */
+export function propVariant(seed: number): { scale: number; light: number } {
+  const h = (Math.imul(seed, 2654435761) >>> 0) % 1000; // cheap integer hash, 0..999
+  return {
+    scale: 0.88 + (h % 7) * 0.04,                // 0.88 .. 1.12
+    light: 0.9 + (Math.floor(h / 7) % 6) * 0.02, // 0.90 .. 1.00
+  };
 }
