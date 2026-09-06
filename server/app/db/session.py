@@ -36,6 +36,10 @@ async def init_db() -> None:
         from sqlalchemy import text
         await conn.execute(text("ALTER TABLE shouts ADD COLUMN IF NOT EXISTS reply_text VARCHAR(400)"))
         await conn.execute(text("ALTER TABLE shouts ADD COLUMN IF NOT EXISTS reply_turn INTEGER"))
+        await conn.execute(text("ALTER TABLE match_players ADD COLUMN IF NOT EXISTS "
+                                "control_mode VARCHAR(12) NOT NULL DEFAULT 'copilot'"))
+        await conn.execute(text("ALTER TABLE matchmaking_queue ADD COLUMN IF NOT EXISTS "
+                                "control_mode VARCHAR(12) NOT NULL DEFAULT 'copilot'"))
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

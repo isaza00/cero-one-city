@@ -112,6 +112,7 @@ async def house_selfplay_tick(ctx) -> None:
             db.add(MatchPlayer(match_id=match.id, agent_id=agent.id,
                                owner_id=agent.owner_id, player_index=index,
                                lineage=agent.lineage, level_snapshot=agent.level,
+                               control_mode="autonomous",
                                deadline_ms=levels.deadline_seconds(
                                    agent.level, agent.lineage) * 1000))
         await db.commit()

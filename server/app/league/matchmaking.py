@@ -120,10 +120,13 @@ async def _create_match(db: AsyncSession, redis, fmt: str, season_id: int,
     await db.flush()
     for index, p in enumerate(picked):
         agent = p["agent"]
+        entry = p["entry"]
         db.add(MatchPlayer(
             match_id=match.id, agent_id=agent.id, owner_id=agent.owner_id,
             player_index=index, lineage=agent.lineage, level_snapshot=agent.level,
-            deadline_ms=levels.deadline_seconds(agent.level, agent.lineage) * 1000))
+            deadline_ms=levels.deadline_seconds(agent.level, agent.lineage) * 1000,
+            # The queue carries the owner's pick; house back-fill plays alone.
+            control_mode=entry.control_mode if entry is not None else "autonomous"))
         if p["entry"] is not None:
             await db.delete(p["entry"])
         if not agent.is_house:

@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { get, post } from "../api/client";
 import type { AgentPublic } from "../api/types";
 import { ErrorText } from "../components/bits";
+import ModePicker, { useControlMode } from "../components/ModePicker";
 
 export default function CustomMatch() {
   const [agents, setAgents] = useState<AgentPublic[]>([]);
@@ -15,6 +16,7 @@ export default function CustomMatch() {
   const [joinAgent, setJoinAgent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [waiting, setWaiting] = useState<number | null>(null);
+  const [mode, setMode] = useControlMode();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -40,7 +42,7 @@ export default function CustomMatch() {
     setError(null);
     try {
       const r = await post<{ match_id: string; started: boolean; waiting_for?: number }>(
-        `/api/matches/custom/${joinCode}/join`, { agent_id: joinAgent });
+        `/api/matches/custom/${joinCode}/join`, { agent_id: joinAgent, mode });
       if (r.started) navigate(`/matches/${r.match_id}`);
       else setWaiting(r.waiting_for ?? null);
     } catch (err) {
@@ -89,6 +91,8 @@ export default function CustomMatch() {
             <option key={a.id} value={a.id}>{a.name} ({a.lineage})</option>
           ))}
         </select>
+        <label>How you play this match</label>
+        <ModePicker value={mode} onChange={setMode} />
         <ErrorText error={error} />
         <button onClick={join} disabled={!joinCode || !joinAgent}>Join</button>
         {waiting !== null && (

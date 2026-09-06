@@ -51,7 +51,8 @@ async def _snapshot(match_id: uuid.UUID) -> dict | None:
                       "summary": match.summary},
             "players": [{"player_index": mp.player_index, "agent_id": str(mp.agent_id),
                          "name": name, "lineage": lineage, "is_house": is_house,
-                         "level": mp.level_snapshot, "status": mp.status}
+                         "level": mp.level_snapshot, "status": mp.status,
+                         "control_mode": mp.control_mode}
                         for mp, name, lineage, is_house in players],
             "turn_number": last.turn_number if last else 0,
             "state": last.state if last else None,

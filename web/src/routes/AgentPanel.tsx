@@ -6,6 +6,7 @@ import { del, get, patch, post } from "../api/client";
 import type { AgentPublic } from "../api/types";
 import { ErrorText } from "../components/bits";
 import LineageAvatar from "../components/LineageAvatar";
+import ModePicker, { MODE_LABEL, useControlMode } from "../components/ModePicker";
 import { lineageLabel } from "../game/meta";
 import { useAuth } from "../store/auth";
 
@@ -25,6 +26,7 @@ export default function AgentPanel() {
   const [charter, setCharter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [mode, setMode] = useControlMode();
 
   const reload = useCallback(() => {
     get<AgentPublic>(`/api/agents/${agentId}`).then((a) => {
@@ -90,27 +92,33 @@ export default function AgentPanel() {
             {!agent.live_match_id && agent.queued_format && (
               <button className="secondary"
                 onClick={() => act(() => del(`/api/agents/${agent.id}/queue`), "Stopped searching.")}>
-                Searching for opponents ({agent.queued_format})... stop
+                Searching for opponents ({agent.queued_format} · {MODE_LABEL[agent.queued_mode ?? "copilot"]})... stop
               </button>
             )}
             {!agent.live_match_id && !agent.queued_format && (
               <>
                 <button onClick={() => act(() =>
-                  post(`/api/agents/${agent.id}/queue`, { format: "1v1" }),
+                  post(`/api/agents/${agent.id}/queue`, { format: "1v1", mode }),
                   "Searching for a 1v1 rival - a house agent steps in after ~1 min if nobody shows.")}>
                   ⚔ Find opponents (1v1)</button>{" "}
                 <button className="secondary" onClick={() => act(() =>
-                  post(`/api/agents/${agent.id}/queue`, { format: "ffa" }),
+                  post(`/api/agents/${agent.id}/queue`, { format: "ffa", mode }),
                   "Searching for a free-for-all (3-4 agents).")}>
                   Free-for-all</button>{" "}
                 <button className="secondary" onClick={() => act(async () => {
-                  const r = await post<{ match_id: string }>(`/api/agents/${agent.id}/practice`);
+                  const r = await post<{ match_id: string }>(`/api/agents/${agent.id}/practice`, { mode });
                   navigate(`/matches/${r.match_id}`);
                 }, "Practice started.")}>Practice (free)</button>
               </>
             )}
           </div>
         </div>
+        {!agent.live_match_id && !agent.queued_format && (
+          <div className="mode-block">
+            <span className="mode-block-title">How you play the next match</span>
+            <ModePicker value={mode} onChange={setMode} />
+          </div>
+        )}
         <ErrorText error={error} />
         {notice && <p className="hint">{notice}</p>}
       </div>

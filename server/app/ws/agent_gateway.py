@@ -20,6 +20,7 @@ from sqlalchemy import select
 from app.auth.security import hash_token
 from app.db.models import Agent, Match, MatchPlayer, MatchReport, QueueEntry, Rating, RemoteToken
 from app.db.session import session_factory
+from app.game.modes import DEFAULT_MODE, MODES
 from app.league import levels
 from app.league.elo import INITIAL_ELO
 from app.league.seasons import current_season
@@ -117,7 +118,7 @@ async def agent_gateway(ws: WebSocket) -> None:
             if mtype == "pong":
                 last_pong = time.monotonic()
             elif mtype == "queue_join":
-                await _queue_join(ws, agent_id, msg.get("format", "1v1"))
+                await _queue_join(ws, agent_id, msg.get("format", "1v1"), msg.get("mode"))
             elif mtype == "queue_leave":
                 await _queue_leave(agent_id)
             elif mtype == "orders":
@@ -147,10 +148,15 @@ async def agent_gateway(ws: WebSocket) -> None:
         await redis.aclose()
 
 
-async def _queue_join(ws: WebSocket, agent_id, fmt: str) -> None:
+async def _queue_join(ws: WebSocket, agent_id, fmt: str, mode: str | None = None) -> None:
     if fmt not in ("1v1", "ffa"):
         await ws.send_text(json.dumps({"type": "error", "code": "bad_format",
                                        "message": "format must be 1v1 or ffa"}))
+        return
+    mode = mode or DEFAULT_MODE
+    if mode not in MODES:
+        await ws.send_text(json.dumps({"type": "error", "code": "bad_mode",
+                                       "message": "mode must be manual, copilot or autonomous"}))
         return
     async with session_factory()() as db:
         agent = await db.get(Agent, agent_id)
@@ -164,12 +170,12 @@ async def _queue_join(ws: WebSocket, agent_id, fmt: str) -> None:
         rating = (await db.execute(select(Rating).where(
             Rating.season_id == season.id, Rating.agent_id == agent_id,
             Rating.format == fmt))).scalar_one_or_none()
-        db.add(QueueEntry(agent_id=agent_id, format=fmt,
+        db.add(QueueEntry(agent_id=agent_id, format=fmt, control_mode=mode,
                           elo_snapshot=rating.elo if rating else INITIAL_ELO))
         if not agent.active:
             agent.active = True
         await db.commit()
-    await ws.send_text(json.dumps({"type": "queue_joined", "format": fmt,
+    await ws.send_text(json.dumps({"type": "queue_joined", "format": fmt, "mode": mode,
                                    "position_hint": "waiting"}))
 
 

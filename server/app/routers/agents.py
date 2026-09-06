@@ -32,6 +32,7 @@ from app.db.models import (
     Setting,
     User,
 )
+from app.game.modes import require_mode
 from app.league import levels
 from app.league.elo import INITIAL_ELO
 from app.league.seasons import current_season
@@ -91,6 +92,7 @@ async def _agent_state(db: AsyncSession, agent: Agent) -> dict:
         Match.status.in_(("forming", "live")))
         .order_by(Match.status.desc(), Match.created_at.desc()))).scalars().first()
     return {"queued_format": queued.format if queued else None,
+            "queued_mode": queued.control_mode if queued else None,
             "live_match_id": str(live) if live else None}
 
 
@@ -464,6 +466,7 @@ async def agent_settings(agent_id: uuid.UUID, body: AgentSettingsBody,
 
 class QueueBody(BaseModel):
     format: str
+    mode: str | None = None   # manual | copilot | autonomous (default copilot)
 
 
 @router.post("/{agent_id}/queue")
@@ -471,6 +474,7 @@ async def join_queue(agent_id: uuid.UUID, body: QueueBody,
                      user: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_db)) -> dict:
     agent = await get_owned_agent(agent_id, user, db)
+    mode = require_mode(body.mode)
     if body.format not in ("1v1", "ffa"):
         raise HTTPException(422, detail={"code": "bad_format",
                                          "message": "format must be 1v1 or ffa"})
@@ -491,13 +495,13 @@ async def join_queue(agent_id: uuid.UUID, body: QueueBody,
     rating = (await db.execute(select(Rating).where(
         Rating.season_id == season.id, Rating.agent_id == agent.id,
         Rating.format == body.format))).scalar_one_or_none()
-    entry = QueueEntry(agent_id=agent.id, format=body.format,
+    entry = QueueEntry(agent_id=agent.id, format=body.format, control_mode=mode,
                        elo_snapshot=rating.elo if rating else INITIAL_ELO)
     db.add(entry)
     agent.active = True
     await db.commit()
     return {"queued_at": entry.enqueued_at.isoformat() if entry.enqueued_at else None,
-            "elo_snapshot": entry.elo_snapshot}
+            "elo_snapshot": entry.elo_snapshot, "mode": mode}
 
 
 @router.delete("/{agent_id}/queue", status_code=204)
@@ -513,10 +517,16 @@ async def leave_queue(agent_id: uuid.UUID, user: User = Depends(get_current_user
 
 # --------------------------------------------------------------------- practice
 
+class PracticeBody(BaseModel):
+    mode: str | None = None   # manual | copilot | autonomous (default copilot)
+
+
 @router.post("/{agent_id}/practice")
-async def start_practice(agent_id: uuid.UUID, user: User = Depends(get_current_user),
+async def start_practice(agent_id: uuid.UUID, body: PracticeBody | None = None,
+                         user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_db)) -> dict:
     agent = await get_owned_agent(agent_id, user, db)
+    mode = require_mode(body.mode if body else None)
     unlimited = user.role == "admin"  # the owner's dev account: practice never runs out
     if user.practice_remaining <= 0 and not unlimited:
         raise HTTPException(403, detail={"code": "practice_exhausted",
@@ -549,11 +559,12 @@ async def start_practice(agent_id: uuid.UUID, user: User = Depends(get_current_u
         db.add(MatchPlayer(match_id=match.id, agent_id=a.id, owner_id=a.owner_id,
                            player_index=index, lineage=a.lineage,
                            level_snapshot=a.level,
+                           control_mode=mode if a is agent else "autonomous",
                            deadline_ms=levels.deadline_seconds(a.level, a.lineage) * 1000))
     await db.commit()
     from app.worker_client import enqueue
     await enqueue("run_match", str(match.id))
-    return {"match_id": str(match.id),
+    return {"match_id": str(match.id), "mode": mode,
             "practice_remaining": user.practice_remaining}
 
 

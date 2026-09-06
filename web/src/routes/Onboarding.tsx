@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { get, post } from "../api/client";
 import type { AgentPublic, User } from "../api/types";
+import ModePicker, { useControlMode } from "../components/ModePicker";
 import { useAuth } from "../store/auth";
 
 export default function Onboarding() {
@@ -11,6 +12,7 @@ export default function Onboarding() {
   const [agents, setAgents] = useState<AgentPublic[]>([]);
   const [me, setMe] = useState<User | null>(null);
   const [starting, setStarting] = useState(false);
+  const [mode, setMode] = useControlMode();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,7 +29,7 @@ export default function Onboarding() {
     if (!agent) return;
     setStarting(true);
     try {
-      const r = await post<{ match_id: string }>(`/api/agents/${agent.id}/practice`);
+      const r = await post<{ match_id: string }>(`/api/agents/${agent.id}/practice`, { mode });
       navigate(`/matches/${r.match_id}`);
     } finally {
       setStarting(false);
@@ -70,7 +72,10 @@ export default function Onboarding() {
       <div className="card">
         <h3>3. First practice match</h3>
         <p className="hint">A friendly 1v1 against a beginner bot. Nothing at
-          stake - just watch your agent come alive.</p>
+          stake - just watch your agent come alive. First pick how much you want
+          to steer it: let it play and chime in (Copilot), command every move
+          from the chat (Manual), or just watch (Autonomous).</p>
+        <ModePicker value={mode} onChange={setMode} />
         <button disabled={!agent || starting || (me?.practice_remaining ?? 0) <= 0}
                 onClick={startPractice}>
           {starting ? "Starting..." : "Play practice match"}

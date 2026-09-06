@@ -180,7 +180,8 @@ THE GAME IN ONE BREATH (think Age of Empires II)
 - YOUR OWNER IS YOUR GENERAL: obs.shouts_from_owner carries their messages from the bench (delivered once). They are
   orders in plain language ("attack their core", "defend", "more workers", "obreros al ataque"): resolve every
   reference yourself against the observation (ids, types, positions), obey them over your own plan until they change
-  them, and remember them in memory_notes so later turns keep following them.
+  them, and remember them in memory_notes so later turns keep following them. How much your owner steers you this
+  match is fixed by the CONTROL MODE in your identity block (obs.control_mode repeats it).
 - READ THE MENUS: obs.menus.build / units / techs list what you can order RIGHT NOW with costs and, when locked, why.
   obs.economy.idle_workers lists workers doing nothing - an idle worker is a wasted turn (AoE2's idle villager button).
 
@@ -213,16 +214,38 @@ Order shapes: {{"type":"move","actor_id":id,"to":[x,y]}} | {{"type":"attack","ac
 ("stop" on a building cancels its job with a full refund.) No markdown, no comments, JSON only."""
 
 
+CONTROL_MODE_TEXT = {
+    "copilot": """CONTROL MODE: COPILOT. You play the match on your own judgment and charter; when
+obs.shouts_from_owner carries a message it is an order from your general - obey it over your own plan
+(see the rules) and answer in "reply".""",
+    "manual": """CONTROL MODE: MANUAL. Your owner plays this match THROUGH you: you never act on your own initiative.
+- Issue ONLY the orders that carry out your owner's chat instructions: the new ones in obs.shouts_from_owner and the
+  standing ones you saved in memory_notes. Resolve every reference yourself (which units, which tiles, which targets).
+- Nothing asked, nothing done: when no instruction covers a unit or a building, leave it alone, and when no
+  instruction applies at all return an empty "orders" list (units keep their standing orders by themselves).
+  Never add "sensible" moves that were not asked for - not even founding the city or training workers.
+- An instruction stays in force on later turns until your owner changes it ("train workers nonstop" means a
+  produce order every turn): save every instruction in memory_notes and re-read them each turn.
+- When an instruction is unclear, impossible or already done, say so briefly in "reply".""",
+    "autonomous": """CONTROL MODE: AUTONOMOUS. Your owner is not in the loop this match: obs.shouts_from_owner is always
+empty and nobody reads "reply". Play the whole match on your own judgment and charter.""",
+}
+
+
 def system_block_identity(name: str, lineage: str, level: int, deadline_s: int,
                           history_turns: int, band: str, diplo: list[str],
-                          charter: str | None, book_entries: list[str]) -> str:
+                          charter: str | None, book_entries: list[str],
+                          control_mode: str = "copilot") -> str:
     """Block 2: per-agent identity, stable during a match (cacheable)."""
     book = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(book_entries)) or "(empty)"
     charter_text = charter or "(no charter: play to win with sound strategy)"
+    mode_text = CONTROL_MODE_TEXT.get(control_mode, CONTROL_MODE_TEXT["copilot"])
     return f"""IDENTITY
 Name: {name}. Lineage: {LINEAGE_TEXT[lineage]}
 Level {level}: {deadline_s}s deadline per turn, {history_turns} turns of history,
 map detail band {band}, diplomacy available: {", ".join(diplo)}.
+
+{mode_text}
 
 YOUR OWNER'S CHARTER (follow it as your personality and priorities):
 {charter_text}

@@ -7,6 +7,7 @@ import { del, get, post } from "../api/client";
 import type { AgentPublic, User } from "../api/types";
 import { ErrorText } from "../components/bits";
 import LineageAvatar from "../components/LineageAvatar";
+import ModePicker, { MODE_LABEL, useControlMode } from "../components/ModePicker";
 import UnitRoster from "../components/UnitRoster";
 import { LINEAGES, lineageLabel } from "../game/meta";
 
@@ -15,6 +16,7 @@ export default function AgentsList() {
   const [me, setMe] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [mode, setMode] = useControlMode();
   const navigate = useNavigate();
 
   const reload = useCallback(() => {
@@ -57,6 +59,12 @@ export default function AgentsList() {
         {" "}Want to fight a friend - or watch your own agents fight each other?{" "}
         <Link to="/custom">Create a private match →</Link>
       </p>
+      {agents.length > 0 && (
+        <div className="card subtle">
+          <span className="mode-block-title">How you play the next match</span>
+          <ModePicker value={mode} onChange={setMode} />
+        </div>
+      )}
       <ErrorText error={error} />
 
       {agents.length === 0 && (
@@ -104,8 +112,8 @@ export default function AgentsList() {
             ) : a.queued_format ? (
               <>
                 <p className="agent-status searching">
-                  Searching for opponents ({a.queued_format})... if nobody shows up
-                  in ~1 min, a house agent steps in.
+                  Searching for opponents ({a.queued_format} · {MODE_LABEL[a.queued_mode ?? "copilot"]})...
+                  if nobody shows up in ~1 min, a house agent steps in.
                 </p>
                 <button className="secondary" disabled={busyId === a.id}
                         onClick={() => act(a.id, () => del(`/api/agents/${a.id}/queue`))}>
@@ -118,19 +126,19 @@ export default function AgentsList() {
                 <div className="agent-actions">
                   <button disabled={busyId === a.id}
                           onClick={() => act(a.id, () =>
-                            post(`/api/agents/${a.id}/queue`, { format: "1v1" }))}>
+                            post(`/api/agents/${a.id}/queue`, { format: "1v1", mode }))}>
                     ⚔ Find opponents (1v1)
                   </button>
                   <button className="secondary" disabled={busyId === a.id}
                           onClick={() => act(a.id, () =>
-                            post(`/api/agents/${a.id}/queue`, { format: "ffa" }))}>
+                            post(`/api/agents/${a.id}/queue`, { format: "ffa", mode }))}>
                     Free-for-all (3-4)
                   </button>
                   {practiceLeft > 0 && (
                     <button className="secondary" disabled={busyId === a.id}
                             onClick={() => act(a.id, async () => {
                               const r = await post<{ match_id: string }>(
-                                `/api/agents/${a.id}/practice`);
+                                `/api/agents/${a.id}/practice`, { mode });
                               navigate(`/matches/${r.match_id}`);
                             })}>
                       Practice (free, {practiceLeft} left)

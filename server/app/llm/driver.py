@@ -42,6 +42,7 @@ class HostedAgentCtx:
     max_tokens: int
     temperature_x100: int | None
     purpose: str = "turn"                      # turn | house | practice
+    control_mode: str = "copilot"              # manual | copilot | autonomous
     match_cap_micros: int = 1_000_000          # $1.00 default
     day_cap_micros: int = 5_000_000            # $5.00 default
     capped: bool = field(default=False)        # set once a cap trips
@@ -50,7 +51,8 @@ class HostedAgentCtx:
         return [system_block_rules(),
                 system_block_identity(self.name, self.lineage, self.level,
                                       self.deadline_s, self.history_turns, self.band,
-                                      self.diplo, self.charter, self.book_entries)]
+                                      self.diplo, self.charter, self.book_entries,
+                                      control_mode=self.control_mode)]
 
 
 async def call_for_turn(db, ctx: HostedAgentCtx, match_id, turn_number: int,

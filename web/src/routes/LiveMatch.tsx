@@ -9,9 +9,10 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { get, post } from "../api/client";
-import type { AgentPublic, EntityOut, GameState, PlayerOut, ShoutOut } from "../api/types";
+import type { AgentPublic, ControlMode, EntityOut, GameState, PlayerOut, ShoutOut } from "../api/types";
 import ActionBox from "../components/ActionBox";
 import { Commentary } from "../components/bits";
+import { MODE_LABEL } from "../components/ModePicker";
 import {
   BuildingsIcon, ClockIcon, DamageIcon, EnergyIcon, MetalIcon, UnitsIcon,
 } from "../components/icons";
@@ -30,9 +31,12 @@ import { useSpectate } from "../ws/useSpectate";
 
 interface ChatMsg { from: "you" | "agent" | "system"; text: string; turn: number }
 
-function AgentChat({ matchId, agentId, agentName, turn, finished }: {
+function AgentChat({ matchId, agentId, agentName, turn, finished, mode }: {
   matchId: string; agentId: string; agentName: string; turn: number; finished: boolean;
+  mode: ControlMode;
 }) {
+  const closed = mode === "autonomous";   // on screen, out of reach
+  const manual = mode === "manual";       // the chat IS the controller
   const [text, setText] = useState("");
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [used, setUsed] = useState(0);
@@ -61,7 +65,7 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
       setMsgs(out);
     } catch { /* keep what we have */ }
   };
-  useEffect(() => { void load(); }, [matchId, agentId, turn]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!closed) void load(); }, [matchId, agentId, turn, closed]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = boxRef.current;
@@ -86,15 +90,45 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
   };
 
   return (
-    <div className="side-section agent-chat">
-      <h3>Talk to {agentName} <span className="hint">({used}/{limit})</span></h3>
-      <p className="hint">
-        You're the general, not the pilot: say what you want ("attack their core",
-        "defend", "more workers", "obreros al ataque") and your agent turns it into
-        orders next turn, resolving who and where by itself. One message per turn.
-        Rivals see that you spoke - never what you said.
-      </p>
+    <div className={`side-section agent-chat${closed ? " locked" : ""}`}>
+      <h3>
+        {manual ? `Command ${agentName}` : `Talk to ${agentName}`}
+        <span className={`mode-chip ${mode}`}>{MODE_LABEL[mode]}</span>
+        {!closed && (
+          <span className="hint">
+            {manual ? ` ${used} sent · one per turn` : ` (${used}/${limit})`}
+          </span>
+        )}
+      </h3>
+      {closed ? (
+        <div className="chat-locked">
+          <strong>Autonomous mode</strong>
+          <span>{agentName} plays this match entirely on its own. The chat is
+            closed: you watch, it decides. Pick Copilot or Manual when you start
+            the next match to talk to it.</span>
+        </div>
+      ) : manual ? (
+        <p className="hint">
+          You are at the controls: {agentName} does nothing until you say so. Tell
+          it what to do ("all workers on the pods", "found the city", "attack their
+          core") and it turns your words into orders next turn, resolving who and
+          where by itself. An order stands until you change it. One message per turn.
+        </p>
+      ) : (
+        <p className="hint">
+          You're the general, not the pilot: say what you want ("attack their core",
+          "defend", "more workers", "obreros al ataque") and your agent turns it into
+          orders next turn, resolving who and where by itself. One message per turn.
+          Rivals see that you spoke - never what you said.
+        </p>
+      )}
       <div className="chat-log" ref={boxRef}>
+        {manual && msgs.length === 0 && (
+          <div className="chat-msg system">
+            <span className="chat-sys-icon">📡 </span>
+            Waiting for your first order - until then {agentName} stands still.
+          </div>
+        )}
         {msgs.map((m, i) => (
           <div key={i} className={`chat-msg ${m.from}`}>
             {m.from === "system" && <span className="chat-sys-icon">📡 </span>}
@@ -105,11 +139,13 @@ function AgentChat({ matchId, agentId, agentName, turn, finished }: {
       </div>
       {error && <div className="error">{error}</div>}
       <form onSubmit={send} className="chat-input-row">
-        <input value={text} maxLength={200} disabled={finished || used >= limit}
-               placeholder={finished ? "Match is over"
+        <input value={text} maxLength={200} disabled={closed || finished || used >= limit}
+               placeholder={closed ? "Chat closed - autonomous mode"
+                 : finished ? "Match is over"
+                 : manual ? "All workers on the pods... found the city..."
                  : "Hold the truce... push their workers..."}
                onChange={(e) => setText(e.target.value)} />
-        <button type="submit" disabled={finished || !text.trim() || used >= limit}>
+        <button type="submit" disabled={closed || finished || !text.trim() || used >= limit}>
           Send
         </button>
       </form>
@@ -596,7 +632,8 @@ export default function LiveMatch() {
         {myPlayer ? (
           <AgentChat matchId={matchId!} agentId={myPlayer.agent_id}
                      agentName={myPlayer.name} turn={data.turn}
-                     finished={data.finished} />
+                     finished={data.finished}
+                     mode={myPlayer.control_mode ?? "copilot"} />
         ) : (
           <div className="side-section">
             <h3>Agent chat</h3>

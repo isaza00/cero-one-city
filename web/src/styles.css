@@ -899,3 +899,63 @@ tr:hover td { background: rgba(255, 255, 255, 0.03); }
 /* the agent answering from the field */
 .chat-msg.agent { border-left: 3px solid var(--amber); background: rgba(255, 176, 32, 0.08); }
 .chat-agent-name { color: var(--amber); font-weight: 800; }
+
+/* ------------------------------------------------ control mode (per match) */
+.mode-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.mode-block-title {
+  display: block; margin-bottom: 8px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted);
+}
+.mode-picker { margin: 6px 0 12px; }
+.mode-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.mode-opt {
+  flex: 1 1 150px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 14px; border-radius: 12px; text-align: left;
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  box-shadow: none; transform: none;
+}
+.mode-opt:hover { border-color: var(--border-strong); background: rgba(255, 255, 255, 0.07); transform: none; }
+.mode-name { font-weight: 800; font-size: 14px; letter-spacing: -0.01em; }
+.mode-tagline { font-size: 12px; color: var(--muted); }
+.mode-opt.on .mode-tagline { color: var(--text); }
+.mode-opt.on.manual {
+  border-color: var(--cyan);
+  background: linear-gradient(135deg, rgba(35, 212, 232, 0.24), rgba(35, 212, 232, 0.05));
+  box-shadow: 0 0 0 1px var(--cyan), 0 0 18px rgba(35, 212, 232, 0.35);
+}
+.mode-opt.on.copilot {
+  border-color: var(--amber);
+  background: linear-gradient(135deg, rgba(255, 176, 32, 0.24), rgba(255, 138, 61, 0.05));
+  box-shadow: 0 0 0 1px var(--amber), 0 0 18px rgba(255, 176, 32, 0.35);
+}
+.mode-opt.on.autonomous {
+  border-color: var(--magenta);
+  background: linear-gradient(135deg, rgba(255, 46, 136, 0.24), rgba(255, 92, 51, 0.05));
+  box-shadow: 0 0 0 1px var(--magenta), 0 0 18px rgba(255, 46, 136, 0.35);
+}
+.mode-detail { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.mode-picker.compact .mode-opt { padding: 7px 12px; flex-basis: 120px; }
+.mode-picker.compact .mode-name { font-size: 13px; }
+.mode-picker.compact .mode-tagline { font-size: 11px; }
+
+.mode-chip {
+  display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  vertical-align: middle;
+}
+.mode-chip.manual { color: var(--cyan); border: 1px solid rgba(35, 212, 232, 0.5); background: rgba(35, 212, 232, 0.12); }
+.mode-chip.copilot { color: var(--amber); border: 1px solid rgba(255, 176, 32, 0.5); background: rgba(255, 176, 32, 0.12); }
+.mode-chip.autonomous { color: var(--magenta); border: 1px solid rgba(255, 46, 136, 0.5); background: rgba(255, 46, 136, 0.12); }
+
+/* Autonomous: the chat stays on screen, greyed out behind the banner. */
+.chat-locked {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-bottom: 8px; padding: 10px 14px; border-radius: 12px;
+  background: linear-gradient(135deg, rgba(255, 46, 136, 0.2), rgba(255, 92, 51, 0.1));
+  border: 1px solid rgba(255, 46, 136, 0.45); font-size: 13px;
+}
+.chat-locked strong { color: var(--magenta); font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; }
+.agent-chat.locked .chat-log, .agent-chat.locked .chat-input-row {
+  opacity: 0.35; filter: grayscale(1); pointer-events: none;
+}

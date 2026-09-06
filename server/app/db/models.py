@@ -182,6 +182,9 @@ class MatchPlayer(Base):
     missed_total: Mapped[int] = mapped_column(Integer, default=0)
     eliminated_at_turn: Mapped[int | None] = mapped_column(Integer)
     shouts_used: Mapped[int] = mapped_column(Integer, default=0)
+    # How much the owner steers this seat: manual | copilot | autonomous
+    # (app/game/modes.py). Picked when the match is started or joined.
+    control_mode: Mapped[str] = mapped_column(String(12), default="copilot")
 
 
 class Turn(Base):
@@ -286,6 +289,7 @@ class QueueEntry(Base):
     elo_snapshot: Mapped[int] = mapped_column(Integer, default=1000)
     enqueued_at: Mapped[datetime] = created_at_col()
     state: Mapped[str] = mapped_column(String(10), default="waiting")
+    control_mode: Mapped[str] = mapped_column(String(12), default="copilot")  # -> the seat
 
 
 class MatchReport(Base):

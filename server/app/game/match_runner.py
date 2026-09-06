@@ -24,6 +24,7 @@ from app.db.models import (
     MatchPlayer,
     MemoryBookEntry,
     RemoteLocker,
+    Shout,
     Turn,
 )
 from app.db.session import session_factory
@@ -51,6 +52,16 @@ class Seat:
     kind: str                       # hosted | remote | mock
     hosted: HostedAgentCtx | None = None
     bot: object | None = None
+    mode: str = "copilot"           # manual | copilot | autonomous (app/game/modes.py)
+    engaged: bool = False           # manual: the owner has spoken at least once
+
+
+def owner_has_spoken(seat: Seat, obs: dict) -> bool:
+    """Manual mode: the agent has something to do only once its owner has sent
+    at least one instruction this match (delivered now or on an earlier turn)."""
+    if obs.get("shouts_from_owner"):
+        seat.engaged = True
+    return seat.engaged
 
 
 async def run_match(ctx, match_id: str) -> None:
@@ -127,16 +138,25 @@ class MatchRunner:
             select(MemoryBookEntry).where(MemoryBookEntry.agent_id == agent.id)
             .order_by(MemoryBookEntry.slot))).scalars()]
         level = mp.level_snapshot
+        # Nobody sits on the bench of a house agent: it always plays alone.
+        mode = "autonomous" if agent.is_house else (mp.control_mode or "copilot")
+        # A manual seat resuming after a crash: the owner may already have spoken.
+        engaged = mode == "manual" and (await self.db.execute(
+            select(Shout.id).where(Shout.match_id == self.match_id,
+                                   Shout.agent_id == agent.id).limit(1))
+        ).scalar_one_or_none() is not None
         common = dict(
             agent_id=agent.id, name=agent.name, lineage=agent.lineage, level=level,
             deadline_s=max(mp.deadline_ms // 1000, 2),
             history_turns=levels.history_turns(level), band=levels.detail_band(level),
             diplo=levels.diplo_actions(level), charter=agent.charter,
             book_entries=book, max_tokens=levels.max_tokens(level),
+            control_mode=mode,
         )
+        seat_kw = dict(mp=mp, agent=agent, mode=mode, engaged=engaged)
 
         if agent.kind == "remote":
-            return Seat(mp=mp, agent=agent, kind="remote")
+            return Seat(kind="remote", **seat_kw)
 
         config = (await self.db.execute(
             select(AgentModelConfig).where(AgentModelConfig.agent_id == agent.id)
@@ -146,7 +166,7 @@ class MatchRunner:
             if match.format == "practice":
                 # Practice is a training ground: the house fields its calmest bot
                 # (turtle never attacks before siege), so the opening stays slow.
-                return Seat(mp=mp, agent=agent, kind="mock",
+                return Seat(**seat_kw, kind="mock",
                             bot=BOTS["turtle"](mp.player_index, match.map_seed))
             if settings.house_api_key:
                 model = (settings.house_model_strong if agent.house_tier == "elite"
@@ -156,10 +176,10 @@ class MatchRunner:
                                         temperature_x100=None, purpose="house",
                                         match_cap_micros=10_000_000_000,
                                         day_cap_micros=10_000_000_000)
-                return Seat(mp=mp, agent=agent, kind="hosted", hosted=hosted)
+                return Seat(**seat_kw, kind="hosted", hosted=hosted)
             bot_name = {"rookie": "rush", "veteran": "boom", "elite": "turtle"}.get(
                 agent.house_tier or "rookie", "boom")
-            return Seat(mp=mp, agent=agent, kind="mock",
+            return Seat(**seat_kw, kind="mock",
                         bot=BOTS[bot_name](mp.player_index, match.map_seed))
 
         # Practice: the game pays a model ONLY for agents that have no brain of
@@ -173,15 +193,15 @@ class MatchRunner:
                                         temperature_x100=None, purpose="practice",
                                         match_cap_micros=10_000_000_000,
                                         day_cap_micros=10_000_000_000)
-                return Seat(mp=mp, agent=agent, kind="hosted", hosted=hosted)
-            return Seat(mp=mp, agent=agent, kind="mock",
+                return Seat(**seat_kw, kind="hosted", hosted=hosted)
+            return Seat(**seat_kw, kind="mock",
                         bot=BOTS["boom"](mp.player_index, match.map_seed))
 
         if config is None:
-            return Seat(mp=mp, agent=agent, kind="mock",
+            return Seat(**seat_kw, kind="mock",
                         bot=BOTS["random"](mp.player_index, match.map_seed))
         if config.provider == "mock":
-            return Seat(mp=mp, agent=agent, kind="mock",
+            return Seat(**seat_kw, kind="mock",
                         bot=BOTS.get(config.model, BOTS["boom"])(mp.player_index,
                                                                  match.map_seed))
         api_key = ""
@@ -200,7 +220,7 @@ class MatchRunner:
             # A local Claude Code session answers through the bridge: slower than
             # an API call, and a simulation - give it the relaxed local deadline.
             hosted.deadline_s = max(hosted.deadline_s, settings.local_model_deadline_s)
-        return Seat(mp=mp, agent=agent, kind="hosted", hosted=hosted)
+        return Seat(**seat_kw, kind="hosted", hosted=hosted)
 
     # ------------------------------------------------------------------- loop
     async def _loop(self, match: Match, state: State, chain: str) -> None:
@@ -219,6 +239,7 @@ class MatchRunner:
                     agent_id=seat.agent.id, level=seat.mp.level_snapshot,
                     lineage=seat.agent.lineage,
                     deadline_s=max(seat.mp.deadline_ms // 1000, 2))
+                observations[idx]["control_mode"] = seat.mode
 
             # Preload remote lockers sequentially: the gather below runs the
             # seats concurrently and they share one DB session, so no seat may
@@ -314,7 +335,6 @@ class MatchRunner:
     async def _store_replies(self, replies: dict[int, str], turn_no: int) -> None:
         """Attach each agent's `reply` to the shouts it answered (those delivered
         in this turn's observation); the owner reads them in the match chat."""
-        from app.db.models import Shout
         for idx, text in replies.items():
             seat = self.seats.get(idx)
             if seat is None:
@@ -336,6 +356,8 @@ class MatchRunner:
                 return {"orders": []}
         if seat.kind == "remote":
             return await self._remote_orders(seat, turn_no, obs, deadline_s)
+        if seat.mode == "manual" and not owner_has_spoken(seat, obs):
+            return {"orders": []}  # manual: nothing asked yet, nothing to do (no call)
         if seat.hosted.purpose in ("house", "practice") and not game_budget_ok:
             return {"orders": []}  # global game budget exhausted: idle turns
         parsed, _status = await call_for_turn(self.db, seat.hosted, self.match_id,
@@ -410,6 +432,7 @@ class MatchRunner:
                 "type": "match_start", "match_id": str(self.match_id),
                 "format": match.format, "map_size": match.map_size,
                 "max_turns": match.max_turns, "your_player_index": idx,
+                "control_mode": seat.mode,
                 "engine_version": ENGINE_VERSION, "ruleset_version": RULESET_VERSION,
                 "players": [{"player_index": i, "name": self.names[i],
                              "lineage": self.seats[i].agent.lineage,

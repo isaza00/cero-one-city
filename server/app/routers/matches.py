@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user, get_owned_agent
 from app.db import get_db
 from app.db.models import Agent, Match, MatchPlayer, MatchPlayerCost, MatchReport, Shout, Turn, User
+from app.game.modes import chat_open, counts_as_intervention, match_shout_limit, require_mode
 from app.league import levels
 from app.settings import get_settings
 from cero_engine import ENGINE_VERSION
@@ -33,7 +34,7 @@ async def _players_out(db: AsyncSession, match_id: uuid.UUID) -> list[dict]:
     return [{"player_index": mp.player_index, "agent_id": str(a.id), "name": a.name,
              "lineage": a.lineage, "level": mp.level_snapshot, "is_house": a.is_house,
              "kind": a.kind, "status": mp.status, "placement": mp.placement,
-             "score": mp.score,
+             "score": mp.score, "control_mode": mp.control_mode,
              "elo_delta": ((mp.elo_after or 0) - (mp.elo_before or 0))
              if mp.elo_after is not None else None}
             for mp, a in rows]
@@ -146,12 +147,19 @@ async def shout(match_id: uuid.UUID, body: ShoutBody,
     if mp is None:
         raise HTTPException(403, detail={"code": "not_in_match",
                                          "message": "your agent is not in this match"})
+    mode = mp.control_mode
+    if not chat_open(mode):
+        raise HTTPException(409, detail={"code": "mode_autonomous",
+                                         "message": "autonomous mode: the chat is closed "
+                                                    "for this match"})
+    limit = match_shout_limit(mode, MATCH_SHOUT_LIMIT, match.max_turns)
     used_match = (await db.execute(select(func.count(Shout.id)).where(
         Shout.match_id == match_id, Shout.agent_id == agent.id))).scalar_one()
-    if used_match >= MATCH_SHOUT_LIMIT:
+    if used_match >= limit:
         raise HTTPException(409, detail={"code": "match_limit",
-                                         "message": f"{MATCH_SHOUT_LIMIT} messages per match"})
-    # Guidance, not remote control: at most one message per game turn.
+                                         "message": f"{limit} messages per match"})
+    # One message per game turn: the agent reads the chat once per turn
+    # (guidance in copilot mode, the controller itself in manual mode).
     same_turn = (await db.execute(select(func.count(Shout.id)).where(
         Shout.match_id == match_id, Shout.agent_id == agent.id,
         Shout.created_turn == match.current_turn))).scalar_one()
@@ -159,18 +167,20 @@ async def shout(match_id: uuid.UUID, body: ShoutBody,
         raise HTTPException(409, detail={
             "code": "turn_limit",
             "message": "one message per turn - wait for the next turn"})
-    if agent.season_shouts_used >= SEASON_SHOUT_LIMIT:
+    intervention = counts_as_intervention(mode)
+    if intervention and agent.season_shouts_used >= SEASON_SHOUT_LIMIT:
         raise HTTPException(409, detail={"code": "season_limit",
                                          "message": f"{SEASON_SHOUT_LIMIT} shouts per season"})
     entry = Shout(match_id=match_id, agent_id=agent.id, owner_id=user.id,
                   text=body.text, created_turn=match.current_turn)
-    agent.season_shouts_used += 1
+    if intervention:
+        agent.season_shouts_used += 1
     mp.shouts_used += 1
     db.add(entry)
     await db.commit()
     return {"shout": {"text": entry.text, "created_turn": entry.created_turn,
-                      "match_used": used_match + 1, "match_limit": MATCH_SHOUT_LIMIT,
-                      "season_used": agent.season_shouts_used}}
+                      "match_used": used_match + 1, "match_limit": limit,
+                      "mode": mode, "season_used": agent.season_shouts_used}}
 
 
 @router.get("/{match_id}/shouts")
@@ -180,13 +190,21 @@ async def my_shouts(match_id: uuid.UUID, agent_id: uuid.UUID,
     """The owner's side of the conversation with its agent: every message sent
     this match, when it was delivered, and the agent's answer (`reply`)."""
     agent = await get_owned_agent(agent_id, user, db)
+    match = await db.get(Match, match_id)
+    mp = (await db.execute(select(MatchPlayer).where(
+        MatchPlayer.match_id == match_id,
+        MatchPlayer.agent_id == agent.id))).scalar_one_or_none()
+    if match is None or mp is None:
+        raise HTTPException(403, detail={"code": "not_in_match",
+                                         "message": "your agent is not in this match"})
     rows = (await db.execute(select(Shout).where(
         Shout.match_id == match_id, Shout.agent_id == agent.id)
         .order_by(Shout.created_at))).scalars().all()
     return {"shouts": [{"text": s.text, "created_turn": s.created_turn,
                         "delivered_turn": s.delivered_turn, "reply_text": s.reply_text,
                         "reply_turn": s.reply_turn} for s in rows],
-            "limit": MATCH_SHOUT_LIMIT}
+            "mode": mp.control_mode,
+            "limit": match_shout_limit(mp.control_mode, MATCH_SHOUT_LIMIT, match.max_turns)}
 
 
 # --------------------------------------------------------------- custom matches
@@ -219,6 +237,7 @@ async def create_custom(body: CustomBody, user: User = Depends(get_current_user)
 
 class JoinBody(BaseModel):
     agent_id: uuid.UUID
+    mode: str | None = None   # manual | copilot | autonomous (default copilot)
 
 
 @router.post("/custom/{code}/join")
@@ -226,6 +245,7 @@ async def join_custom(code: str, body: JoinBody,
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_db)) -> dict:
     agent = await get_owned_agent(body.agent_id, user, db)
+    mode = require_mode(body.mode)
     match = (await db.execute(select(Match).where(
         Match.invite_code == code.lower(), Match.status == "forming"))).scalar_one_or_none()
     if match is None or (match.invite_expires_at
@@ -249,7 +269,7 @@ async def join_custom(code: str, body: JoinBody,
                                                     "opponent from another account"})
     db.add(MatchPlayer(match_id=match.id, agent_id=agent.id, owner_id=user.id,
                        player_index=len(players), lineage=agent.lineage,
-                       level_snapshot=agent.level,
+                       level_snapshot=agent.level, control_mode=mode,
                        deadline_ms=levels.deadline_seconds(agent.level,
                                                            agent.lineage) * 1000))
     await db.commit()

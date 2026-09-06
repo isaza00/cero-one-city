@@ -5,7 +5,7 @@
  * dies mid-match, three missed turns in a row lose the match by abandonment.
  *
  * Usage:
- *   node ceroAgent.mjs --server ws://localhost:8000 --token cero_... --format 1v1
+ *   node ceroAgent.mjs --server ws://localhost:8000 --token cero_... --format 1v1 [--mode copilot]
  *
  * Replace exampleBot() with your own logic (call an LLM, run a search, ...).
  */
@@ -17,6 +17,7 @@ const args = Object.fromEntries(
 const SERVER = args.server ?? "ws://localhost:8000";
 const TOKEN = args.token;
 const FORMAT = args.format ?? "1v1";
+const MODE = args.mode ?? "copilot";   // manual | copilot | autonomous (obs.control_mode)
 if (!TOKEN) {
   console.error("--token is required");
   process.exit(1);
@@ -142,7 +143,7 @@ ws.addEventListener("message", (event) => {
   switch (msg.type) {
     case "hello_ok":
       console.log(`online as ${msg.agent.name} (level ${msg.agent.level})`);
-      ws.send(JSON.stringify({ type: "queue_join", format: FORMAT }));
+      ws.send(JSON.stringify({ type: "queue_join", format: FORMAT, mode: MODE }));
       break;
     case "ping":
       ws.send(JSON.stringify({ type: "pong" }));
@@ -161,7 +162,7 @@ ws.addEventListener("message", (event) => {
       break;
     case "match_end":
       console.log(`match over: placement ${msg.placement} score ${msg.score}`);
-      ws.send(JSON.stringify({ type: "queue_join", format: FORMAT }));
+      ws.send(JSON.stringify({ type: "queue_join", format: FORMAT, mode: MODE }));
       break;
     case "error":
       console.error(`server error: ${msg.code}: ${msg.message}`);

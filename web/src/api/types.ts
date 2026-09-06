@@ -1,5 +1,8 @@
 // API payload types (mirrors the FastAPI responses).
 
+/** How much the owner steers the agent during one match (picked per seat). */
+export type ControlMode = "manual" | "copilot" | "autonomous";
+
 export interface User {
   id: string;
   email: string;
@@ -32,6 +35,7 @@ export interface AgentPublic {
   auto_queue?: boolean;
   formats?: string[];
   queued_format?: string | null;
+  queued_mode?: ControlMode | null;
   live_match_id?: string | null;
   model_config?: {
     provider: string;
@@ -66,6 +70,8 @@ export interface MatchPlayerOut {
   placement: number | null;
   score: number | null;
   elo_delta: number | null;
+  /** The seat's control mode (match detail and spectator snapshot). */
+  control_mode?: ControlMode;
 }
 
 export interface MatchOut {

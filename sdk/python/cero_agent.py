@@ -140,7 +140,8 @@ class ExampleBot:
         return orders
 
 
-async def run(server: str, token: str, fmt: str, bot: ExampleBot) -> None:
+async def run(server: str, token: str, fmt: str, bot: ExampleBot,
+              mode: str = "copilot") -> None:
     url = server.rstrip("/") + "/ws/agent"
     async with websockets.connect(url, max_size=16 * 1024 * 1024) as ws:
         await ws.send(json.dumps({"type": "hello", "token": token}))
@@ -150,7 +151,7 @@ async def run(server: str, token: str, fmt: str, bot: ExampleBot) -> None:
         agent = hello["agent"]
         print(f"online as {agent['name']} (level {agent['level']}, "
               f"{hello['limits']['deadline_ms']}ms per turn)")
-        await ws.send(json.dumps({"type": "queue_join", "format": fmt}))
+        await ws.send(json.dumps({"type": "queue_join", "format": fmt, "mode": mode}))
 
         locker: str | None = None
         async for raw in ws:
@@ -159,7 +160,7 @@ async def run(server: str, token: str, fmt: str, bot: ExampleBot) -> None:
             if mtype == "ping":
                 await ws.send('{"type":"pong"}')
             elif mtype == "queue_joined":
-                print(f"queued for {msg['format']}...")
+                print(f"queued for {msg['format']} ({msg.get('mode', 'copilot')} mode)...")
             elif mtype == "match_start":
                 print(f"match {msg['match_id']} started: you are "
                       f"player {msg['your_player_index']} vs "
@@ -174,7 +175,7 @@ async def run(server: str, token: str, fmt: str, bot: ExampleBot) -> None:
                 print(f"match over: placement {msg.get('placement')} "
                       f"score {msg.get('score')} elo {msg.get('elo_delta'):+d} "
                       f"xp +{msg.get('xp_awarded')}")
-                await ws.send(json.dumps({"type": "queue_join", "format": fmt}))
+                await ws.send(json.dumps({"type": "queue_join", "format": fmt, "mode": mode}))
             elif mtype == "error":
                 print(f"server error: {msg.get('code')}: {msg.get('message')}")
 
@@ -184,6 +185,10 @@ def main() -> None:
     parser.add_argument("--server", default="ws://localhost:8000")
     parser.add_argument("--token", required=True)
     parser.add_argument("--format", default="1v1", choices=["1v1", "ffa"])
+    parser.add_argument("--mode", default="copilot",
+                        choices=["manual", "copilot", "autonomous"],
+                        help="how much the owner steers you from the match chat "
+                             "(obs.control_mode repeats it every turn)")
     args = parser.parse_args()
 
     loop = asyncio.new_event_loop()
@@ -193,7 +198,8 @@ def main() -> None:
         except NotImplementedError:
             pass  # Windows
     try:
-        loop.run_until_complete(run(args.server, args.token, args.format, ExampleBot()))
+        loop.run_until_complete(run(args.server, args.token, args.format, ExampleBot(),
+                                     args.mode))
     except KeyboardInterrupt:
         print("bye - remember: dying mid-match forfeits by abandonment")
 
