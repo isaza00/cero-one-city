@@ -19,6 +19,7 @@ import {
 } from "../game/meta";
 import { PERSPECTIVE_ALL, exploredTilesFor, visibleTilesFor } from "../game/vision";
 import { getBuildingFrames, getUnitFrames, packReady } from "./spritepack";
+import { getPropTexture, propAnchor, propsReady } from "./terrainprops";
 
 export const TILE_W = 64;   // diamond width in world px
 export const TILE_H = 32;   // diamond height (2:1 - the AoE2 ratio)
@@ -85,6 +86,7 @@ interface Effect {
 export class MapRenderer {
   private app: Application | null = null;
   private terrain = new Graphics();
+  private props = new Container();     // pre-rendered 3D terrain props (rocks, pods, scrap...)
   private sprites = new Container();
   private overlay = new Graphics();
   private selection = new Graphics();
@@ -168,10 +170,11 @@ export class MapRenderer {
     }
     this.app = app;
     host.replaceChildren(app.canvas);
-    this.root.addChild(this.terrain, this.decals, this.selection, this.sprites,
+    this.root.addChild(this.terrain, this.props, this.decals, this.selection, this.sprites,
                        this.industry, this.effectsLayer, this.overlay, this.fog);
     app.stage.addChild(this.root);
     this.sprites.sortableChildren = true;
+    this.props.sortableChildren = true;
     app.ticker.add(() => this.tick(app.ticker.deltaMS));
     this.attachCameraControls(app.canvas);
   }
@@ -1147,12 +1150,14 @@ export class MapRenderer {
    * With fog active, the decorative dead land outside the map is NOT drawn:
    * beyond the edge there is only the same darkness as unexplored ground. */
   private renderTerrain(state: GameState, fogged: boolean): void {
-    const key = `${state.size}:${fogged}:${state.tiles.flat().join("")}:${Object.keys(state.scrap).join(",")}`;
+    const key = `${state.size}:${fogged}:${propsReady()}:${state.tiles.flat().join("")}:${Object.keys(state.scrap).join(",")}`;
     if (key === this.terrainKey) return;
     this.terrainKey = key;
     const g = this.terrain;
     g.clear();
+    this.props.removeChildren();
     const size = state.size;
+    const usePack = propsReady();
 
     // Seamless world (god view only): the ground outside the playable area is
     // drawn with the same palette and haze as the inside, so no edge or
@@ -1172,8 +1177,10 @@ export class MapRenderer {
                                    + PLAIN_SHADES.length) % PLAIN_SHADES.length];
           this.diamond(g, c.x, c.y).fill(shade(raw, f));
           if (n === 13) { // collapsed slab out in the dead land
-            g.rect(c.x - 7, c.y - 3, 13, 5).fill(shade(0x2c333e, f));
-            g.rect(c.x - 3, c.y - 6, 6, 3).fill(shade(0x1c222d, f));
+            if (!(usePack && this.placeProp("deadland", tx * 3 + ty, c, f))) {
+              g.rect(c.x - 7, c.y - 3, 13, 5).fill(shade(0x2c333e, f));
+              g.rect(c.x - 3, c.y - 6, 6, 3).fill(shade(0x1c222d, f));
+            }
           } else if (n % 13 === 4) {
             g.rect(c.x - 2, c.y - 1, 3, 2).fill(shade(0x232b38, f));
           }
@@ -1198,6 +1205,8 @@ export class MapRenderer {
         if (terrain === "plain") {
           if (n === 0) g.rect(c.x - 3, c.y + 2, 4, 2).fill(0x1f2937);
           if (n === 5) g.rect(c.x + 6, c.y - 3, 3, 2).fill(0x121826);
+        } else if (usePack && terrain !== "plain" && this.placeProp(terrain, x * 7 + y * 3, c, f)) {
+          // pre-rendered prop placed; nothing more to draw for this tile
         } else if (terrain === "blocked") {
           g.rect(c.x - 12, c.y - 5, 12, 6).fill(0x4d5766);
           g.rect(c.x - 2, c.y - 1, 11, 6).fill(0x2c333e);
@@ -1244,10 +1253,27 @@ export class MapRenderer {
     for (const key2 of Object.keys(state.scrap)) {
       const [x, y] = key2.split(",").map(Number);
       const c = this.px(x, y);
+      const fs = 0.82 + ((x + y) / (2 * (size - 1))) * 0.34;
+      if (usePack && this.placeProp("scrap", x + y * 5, c, fs)) continue;
       g.ellipse(c.x, c.y + 2, 8, 4).fill(0x8d99ae);
       g.ellipse(c.x, c.y + 2, 3, 1.6).fill(0x39414e);
       g.rect(c.x + 5, c.y - 4, 4, 3).fill(0xaab4c4);
     }
+  }
+
+  /** Place a pre-rendered terrain prop on tile center c. Returns false when the
+   * pack is not loaded (caller then draws the procedural fallback). */
+  private placeProp(kind: string, seed: number, c: { x: number; y: number }, f: number): boolean {
+    const tex = getPropTexture(kind, seed);
+    if (!tex) return false;
+    const s = new Sprite(tex);
+    const a = propAnchor();
+    s.anchor.set(a.x, a.y);
+    s.position.set(c.x, c.y);
+    s.tint = shade(0xffffff, Math.min(1, f)); // far rows sit in the same haze as the ground
+    s.zIndex = c.y;
+    this.props.addChild(s);
+    return true;
   }
 
   private hpBarOn(g: Graphics, x: number, y: number, w: number,

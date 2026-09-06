@@ -1,0 +1,37 @@
+{
+  "size": 128,
+  "anchor": [
+    64,
+    80
+  ],
+  "camera": {
+    "azimuth_deg": 45,
+    "elevation_deg": 30,
+    "ortho": true,
+    "tile_px": [
+      64,
+      32
+    ]
+  },
+  "kinds": {
+    "blocked": [
+      "blocked.png"
+    ],
+    "vein": [
+      "vein.png"
+    ],
+    "pod": [
+      "pod.png"
+    ],
+    "rubble": [
+      "rubble.png"
+    ],
+    "scrap": [
+      "scrap.png"
+    ],
+    "deadland": [
+      "deadland_a.png",
+      "deadland_b.png"
+    ]
+  }
+}
