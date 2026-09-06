@@ -1,36 +1,36 @@
-"""Slice the rendered ground patch into 64x32 diamond tiles.
-Input: ground_big.png (TILES*64*AA x TILES*32*AA). Output: ground_atlas.png
-with TILES x TILES cells of 64x32 (cell (i,j) at (i*64, j*32)), each a
-diamond cut from the continuous render so neighbours match seamlessly."""
+"""Slice the rendered ground patch into ground cells (one per tile).
+Input: ground_render_2x.png (TILES*64*AA x TILES*32*AA). Output: an atlas with
+TILES x TILES cells of (64*S)x(32*S), cell (i,j) at (i*64*S, j*32*S). Each cell
+is an OPAQUE rectangle cut from the continuous render: its corner triangles
+hold exactly what the neighbouring tiles paint there, so the overlapping cells
+compose into one seamless surface at any zoom and mipmaps have no alpha edge.
+S = atlas texels per world pixel (default 2). Same lattice as
+web/scripts/slice-ground.mjs, which needs no PIL.
+
+  python slice_ground.py ground_render_2x.png ../../web/public/ground/ground_atlas.jpg [S]
+"""
 import sys
 import numpy as np
 from PIL import Image
 
-src = sys.argv[1]; out = sys.argv[2]
-TILES = 12; TW, TH = 64, 32
+src = sys.argv[1]; out = sys.argv[2]; S = int(sys.argv[3]) if len(sys.argv) > 3 else 2
+TILES = 12; TW, TH = 64*S, 32*S
 img = Image.open(src).convert("RGB")
-img = img.resize((TILES*TW, TILES*TH), Image.LANCZOS)      # 2x AA -> game res
+img = img.resize((TILES*TW, TILES*TH), Image.LANCZOS)      # render -> atlas res
 arr = np.array(img)
 W, H = img.size
 
-# diamond alpha mask (64x32), slightly oversized so seams overlap by ~0.5px
-yy, xx = np.mgrid[0:TH, 0:TW]
-mask = (np.abs((xx + 0.5) - TW/2) / (TW/2) + np.abs((yy + 0.5) - TH/2) / (TH/2)) <= 1.02
-mask_a = (mask * 255).astype(np.uint8)
-
-# iso lattice over the render: diamond centers (i-j)*32 + W/2, (i+j)*16 + 16
-# tile (i,j) for i,j in 0..TILES-1 ; the map indexes it with (x % TILES, y % TILES)
-atlas = np.zeros((TILES*TH, TILES*TW, 4), np.uint8)
+# iso lattice over the render: cell centers (i-j)*TW/2 + W/2, (i+j)*TH/2 + TH/2
+# for i,j in 0..TILES-1; the map indexes it with (x % TILES, y % TILES)
+atlas = np.zeros((TILES*TH, TILES*TW, 3), np.uint8)
 for j in range(TILES):
     for i in range(TILES):
         cx = (i - j) * (TW//2) + W//2
         cy = (i + j) * (TH//2) + TH//2
         x0, y0 = cx - TW//2, cy - TH//2
-        # sample with wraparound so the whole lattice has pixels
+        # sample with wraparound (the render is periodic over TILES tiles)
         xs = (np.arange(x0, x0+TW)) % W
         ys = (np.arange(y0, y0+TH)) % H
-        patch = arr[np.ix_(ys, xs)]
-        cell = np.dstack([patch, mask_a])
-        atlas[j*TH:(j+1)*TH, i*TW:(i+1)*TW] = cell
-Image.fromarray(atlas, "RGBA").save(out)
+        atlas[j*TH:(j+1)*TH, i*TW:(i+1)*TW] = arr[np.ix_(ys, xs)]
+Image.fromarray(atlas, "RGB").save(out, quality=92)
 print("atlas", atlas.shape)

@@ -19,8 +19,8 @@ import {
 } from "../game/meta";
 import { PERSPECTIVE_ALL, exploredTilesFor, visibleTilesFor } from "../game/vision";
 import { getBuildingFrames, getUnitFrames, packReady } from "./spritepack";
-import { getPropTexture, propAnchor, propVariant, propsReady } from "./terrainprops";
-import { getGroundTexture, groundReady } from "./ground";
+import { getPropTexture, propAnchor, propScale, propVariant, propsReady } from "./terrainprops";
+import { getGroundTexture, groundReady, groundScale } from "./ground";
 
 export const TILE_W = 64;   // diamond width in world px
 export const TILE_H = 32;   // diamond height (2:1 - the AoE2 ratio)
@@ -41,6 +41,14 @@ const TERRAIN_BASE: Record<string, number> = {
   vein: 0x2a2617,
   pod: 0x16302a,      // wild pods: the energy you FIND (berries), finite
   rubble: 0x3a2f24,
+};
+
+// Faint colour cast laid over the pre-rendered ground on special tiles.
+const TERRAIN_CAST: Record<string, number> = {
+  blocked: 0x8fa0b8,
+  vein: 0xe0b85a,
+  pod: 0x3ddc97,
+  rubble: 0x9a7a55,
 };
 
 /** Multiply a color's brightness (atmospheric depth: far = darker). */
@@ -86,10 +94,10 @@ interface Effect {
 
 export class MapRenderer {
   private app: Application | null = null;
-  // Pre-rendered ground diamonds, under everything. Cached as ONE texture at
-  // 1:1 so the camera scales a single sprite: thousands of diamonds cost one
-  // draw, and the atlas is only ever sampled texel-aligned, so zooming shows
-  // no seams between diamonds and no bleed between atlas cells.
+  // Pre-rendered ground cells, under everything: one sprite per tile, all
+  // from one atlas so they batch into a single draw. (Not cached as a texture:
+  // a 96-tile world with its dead land is ~6300x3200 world px, far too much
+  // VRAM at the 2x resolution the atlas is authored at.)
   private ground = new Container();
   private terrain = new Graphics();
   private scrapG = new Graphics();     // procedural scrap fallback (dynamic, own key)
@@ -185,7 +193,6 @@ export class MapRenderer {
                        this.industry, this.effectsLayer, this.overlay, this.fog);
     app.stage.addChild(this.root);
     this.sprites.sortableChildren = true;
-    this.ground.cacheAsTexture({ resolution: 1, antialias: false });
     app.ticker.add(() => this.tick(app.ticker.deltaMS));
     this.attachCameraControls(app.canvas);
   }
@@ -1219,9 +1226,15 @@ export class MapRenderer {
           ? PLAIN_SHADES[(x * 7 + y * 13 + ((x * x + y) >> 1)) % PLAIN_SHADES.length]
           : TERRAIN_BASE[terrain] ?? PLAIN_SHADES[0];
         const base = shade(raw, f);
-        const groundTint = terrain === "vein" ? 0xd9c9a8 : terrain === "pod" ? 0xb9d9c9
-          : terrain === "rubble" ? 0xcdbcaa : terrain === "blocked" ? 0xc0c6d0 : 0xffffff;
-        if (!(useGround && this.placeGround(x, y, c, f, groundTint))) this.diamond(g, c.x, c.y).fill(base);
+        if (useGround && this.placeGround(x, y, c, f)) {
+          // Terrain kinds get a faint colour cast on their diamond, drawn over
+          // the ground (the ground cell itself is a rectangle shared with the
+          // neighbours, so it cannot be tinted per tile).
+          const cast = TERRAIN_CAST[terrain];
+          if (cast) this.diamond(g, c.x, c.y).fill({ color: cast, alpha: 0.2 });
+        } else {
+          this.diamond(g, c.x, c.y).fill(base);
+        }
         const n = (x * 31 + y * 17) % 11;
         if (terrain === "plain") {
           if (n === 0) g.rect(c.x - 3, c.y + 2, 4, 2).fill(0x1f2937);
@@ -1271,7 +1284,6 @@ export class MapRenderer {
       g.moveTo(b1.x, b1.y).lineTo(b2.x, b2.y)
         .stroke({ width: 1, color: 0xffffff, alpha: 0.05 });
     }
-    this.ground.updateCacheTexture(); // bake the diamonds into the single ground texture
   }
 
   /** Scrap piles dropped by destroyed units. They come and go all match long,
@@ -1297,13 +1309,14 @@ export class MapRenderer {
     }
   }
 
-  /** Pre-rendered ground diamond for tile (tx,ty) at center c, haze-tinted by f. */
-  private placeGround(tx: number, ty: number, c: { x: number; y: number }, f: number, tint = 0xffffff): boolean {
+  /** Pre-rendered ground cell for tile (tx,ty) at center c, haze-tinted by f. */
+  private placeGround(tx: number, ty: number, c: { x: number; y: number }, f: number): boolean {
     const tex = getGroundTexture(tx, ty);
     if (!tex) return false;
     const s = new Sprite(tex);
+    s.scale.set(groundScale());
     s.position.set(c.x - TILE_W / 2, c.y - TILE_H / 2);
-    s.tint = shade(tint, Math.min(1.15, f));
+    s.tint = shade(0xffffff, Math.min(1.15, f));
     this.ground.addChild(s);
     return true;
   }
@@ -1322,7 +1335,7 @@ export class MapRenderer {
     s.anchor.set(a.x, a.y);
     s.position.set(c.x, c.y);
     const v = propVariant(seed);
-    s.scale.set(v.scale);
+    s.scale.set(v.scale * propScale());
     s.tint = shade(0xffffff, Math.min(1, f) * v.light); // far rows sit in the same haze as the ground
     s.zIndex = (tx + ty) * 10 + 2;
     this.sprites.addChild(s);

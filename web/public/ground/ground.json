@@ -1,1 +1,1 @@
-{"tiles": 12, "tile": [64, 32]}
+{"tiles": 12, "tile": [128, 64], "world_tile": [64, 32], "atlas": "ground_atlas.jpg"}
