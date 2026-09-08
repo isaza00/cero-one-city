@@ -38,10 +38,12 @@ export function useSpectate(matchId: string | undefined): SpectateData {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (wsRef.current !== ws) return;   // a socket the effect already discarded (StrictMode re-run)
         retry = 0;
         setData((d) => ({ ...d, connected: true }));
       };
       ws.onmessage = (event) => {
+        if (wsRef.current !== ws) return;
         const msg = JSON.parse(event.data);
         if (msg.type === "snapshot") {
           const snap = msg as SpectateSnapshot;
@@ -73,6 +75,7 @@ export function useSpectate(matchId: string | undefined): SpectateData {
         }
       };
       ws.onclose = () => {
+        if (wsRef.current !== ws) return;   // the discarded socket closing must not flip `connected`
         setData((d) => ({ ...d, connected: false }));
         if (!closed && retry < 8) {
           retry += 1;
