@@ -1,0 +1,257 @@
+/* Play hub (/play). Every rule is scoped to .play-hub or to a play-* class of
+   its own; the only thing outside the hub is the highlighted nav link, which
+   Layout.tsx imports from here too. Nothing global (buttons, .card, fonts,
+   HUD) is touched. */
+
+/* ------------------------------------------------------------- nav entry */
+.topnav a.play-nav-link {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 12.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 92, 51, 0.55);
+  background: rgba(255, 92, 51, 0.1);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.topnav a.play-nav-link:hover { background: rgba(255, 92, 51, 0.22); border-color: var(--ember); }
+.topnav a.play-nav-link.active {
+  background: var(--ember);
+  border-color: var(--ember);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------- structure */
+.play-hub { max-width: 1180px; margin: 0 auto; min-width: 0; }
+.play-hub * { min-width: 0; }
+
+.play-head { margin: 4px 0 22px; }
+.play-kicker {
+  margin: 0 0 6px;
+  color: var(--ember2);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.play-title { margin: 0 0 8px; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
+.play-lead { margin: 0; max-width: 720px; color: var(--muted); font-size: 15px; }
+.play-lead strong { color: var(--text); }
+
+.play-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: 22px;
+  align-items: start;
+}
+.play-main, .play-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* Steel-plate panels: flat graphite, hairline edges, one light seam on top. */
+.play-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(22, 26, 34, 0.94), rgba(12, 15, 21, 0.96));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+.play-card::before {
+  content: "";
+  position: absolute; left: 14px; right: 14px; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+}
+.play-card h2, .play-card h3 { margin: 0 0 8px; }
+.play-card h2 { font-size: 22px; }
+.play-card h3 { font-size: 16px; letter-spacing: -0.01em; }
+.play-card p { margin: 0 0 10px; }
+.play-card p:last-child { margin-bottom: 0; }
+
+.play-step-label {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.play-step-label b { color: var(--ember2); margin-right: 8px; font-family: "Cascadia Code", Consolas, monospace; }
+
+.play-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.play-note { color: var(--muted); font-size: 13px; }
+.play-note a { font-weight: 600; }
+.play-inline-link { font-weight: 600; }
+.play-hub .hint { margin: 0; }
+
+/* ------------------------------------------------------- agent selector */
+.play-agents { display: flex; flex-direction: column; gap: 8px; }
+.play-agent {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+.play-agent:hover {
+  transform: none; filter: none; color: var(--text);
+  background: rgba(255, 255, 255, 0.06); border-color: var(--border-strong);
+}
+.play-agent:disabled { opacity: 0.6; }
+.play-agent.on { border-color: var(--ember); background: rgba(255, 92, 51, 0.08); }
+.play-agent-mark { width: 8px; height: 30px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); }
+.play-agent.on .play-agent-mark { background: var(--ember); }
+.play-agent-name { display: block; font-weight: 700; font-size: 15px; }
+.play-agent-meta {
+  display: block; color: var(--muted); font-size: 12.5px; margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Status chips: one shape, the colour carries the state. */
+.play-chip {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.play-chip.searching { color: var(--amber); border-color: rgba(255, 176, 32, 0.5); background: rgba(255, 176, 32, 0.1); }
+.play-chip.live { color: var(--ok); border-color: rgba(74, 222, 128, 0.5); background: rgba(74, 222, 128, 0.1); }
+.play-chip.warn { color: var(--ember2); border-color: rgba(255, 138, 61, 0.5); background: rgba(255, 138, 61, 0.1); }
+
+/* ------------------------------------------------------------ mode step */
+.play-mode-note { margin-top: 2px; color: var(--muted); font-size: 13px; }
+.play-mode-note strong { color: var(--text); }
+
+/* --------------------------------------------------------- format cards */
+.play-formats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.play-format {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(4, 6, 10, 0.45);
+}
+.play-format-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.play-format-name { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.play-format-tag { color: var(--cyan); font-size: 11.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+.play-format-blurb { color: var(--muted); font-size: 13.5px; margin: 0; }
+.play-format-elo { color: var(--muted); font-size: 12.5px; margin: 0; }
+.play-format-elo b { color: var(--text); font-family: "Cascadia Code", Consolas, monospace; font-weight: 600; }
+.play-format-cta { margin-top: auto; padding-top: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.play-format-cta button { width: 100%; }
+.play-format-why { color: var(--muted); font-size: 12.5px; }
+
+/* --------------------------------------------------- searching / live */
+.play-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border-left: 3px solid var(--amber);
+}
+.play-status.live { border-left-color: var(--ok); }
+.play-status-title { display: block; font-weight: 800; font-size: 16px; }
+.play-status-sub { display: block; color: var(--text); font-size: 13.5px; margin-top: 2px; }
+.play-status-sub .mono { color: var(--amber); font-weight: 600; }
+.play-status.live .play-status-sub .mono { color: var(--ok); }
+.play-status .play-note { margin-top: 6px; display: block; }
+.play-pulse {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0 0 rgba(255, 176, 32, 0.5);
+  animation: play-pulse 1.6s ease-out infinite;
+}
+.play-status.live .play-pulse { background: var(--ok); box-shadow: 0 0 10px rgba(74, 222, 128, 0.6); animation: none; }
+@keyframes play-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 176, 32, 0.55); }
+  100% { box-shadow: 0 0 0 12px rgba(255, 176, 32, 0); }
+}
+.play-status-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.play-status-actions a { display: block; }
+.play-status-actions button { width: 100%; white-space: nowrap; }
+
+/* --------------------------------------------------------------- errors */
+.play-error {
+  border: 1px solid rgba(255, 77, 94, 0.45);
+  background: rgba(255, 77, 94, 0.08);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: 13.5px;
+}
+.play-error strong { color: var(--danger); }
+.play-error .play-note { margin-top: 4px; }
+.play-error .play-actions { margin-top: 8px; }
+.play-notice {
+  border: 1px solid var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+}
+
+/* ------------------------------------------------------------ live list */
+.play-live-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.play-live-head h3 { margin: 0; }
+.play-live-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--danger); box-shadow: 0 0 8px var(--danger);
+}
+.play-live-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.play-live-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.play-live-row:first-child { border-top: none; padding-top: 4px; }
+.play-live-meta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.play-live-format { color: var(--ember2); font-weight: 800; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+.play-live-turn { color: var(--muted); font-size: 12.5px; }
+.play-live-players { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 0; }
+.play-live-players .badge { margin-right: 4px; }
+.play-watch {
+  align-self: start;
+  padding: 3px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.play-watch:hover { border-color: var(--cyan); color: var(--cyan); }
+.play-more { display: inline-block; margin-top: 10px; font-size: 13px; font-weight: 600; }
+
+/* ----------------------------------------------------- secondary ways */
+.play-way + .play-way { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.play-way strong { display: block; font-size: 14.5px; margin-bottom: 2px; }
+.play-way p { color: var(--muted); font-size: 13px; }
+.play-way .play-actions { margin-top: 8px; }
+
+/* -------------------------------------------------------------- narrow */
+@media (max-width: 1000px) {
+  .play-grid { grid-template-columns: minmax(0, 1fr); }
+  .play-title { font-size: 28px; }
+}
+@media (max-width: 640px) {
+  .play-formats { grid-template-columns: minmax(0, 1fr); }
+  .play-status { grid-template-columns: auto minmax(0, 1fr); }
+  .play-status-actions { grid-column: 1 / -1; }
+}

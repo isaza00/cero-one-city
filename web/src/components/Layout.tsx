@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { musicPlaying, startMusic, stopMusic } from "../audio/music";
 import { useAuth } from "../store/auth";
+import "../routes/play.css"; // the highlighted Play link
 
 function MusicToggle() {
   const [on, setOn] = useState(musicPlaying());
@@ -24,6 +25,7 @@ export default function Layout() {
     <>
       <nav className="topnav">
         <NavLink to="/" className="brand">CERO ONE CITY</NavLink>
+        <NavLink to="/play" className="play-nav-link">Play</NavLink>
         <NavLink to="/matches">Live</NavLink>
         <NavLink to="/leaderboard">Ranking</NavLink>
         {/* Always visible - they just bounce to /login when logged out. */}

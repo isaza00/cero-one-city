@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { useAuth } from "./store/auth";
 import Admin from "./routes/Admin";
+import ArtCredits from "./routes/ArtCredits";
 import AgentPanel from "./routes/AgentPanel";
 import AgentsList from "./routes/AgentsList";
 import { Login, Register } from "./routes/Auth";
@@ -14,6 +15,7 @@ import Leaderboard from "./routes/Leaderboard";
 import LiveMatch from "./routes/LiveMatch";
 import MatchesList from "./routes/MatchesList";
 import Onboarding from "./routes/Onboarding";
+import Play from "./routes/Play";
 import PostMatch from "./routes/PostMatch";
 import Profile from "./routes/Profile";
 import Replay from "./routes/Replay";
@@ -31,9 +33,11 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Landing />} />
+          <Route path="/play" element={<Play />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/matches" element={<MatchesList />} />
+          <Route path="/art-credits" element={<ArtCredits />} />
           <Route path="/matches/:matchId" element={<LiveMatch />} />
           <Route path="/matches/:matchId/replay" element={<Replay />} />
           <Route path="/matches/:matchId/result" element={<PostMatch />} />
