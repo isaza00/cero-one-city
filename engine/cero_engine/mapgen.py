@@ -4,6 +4,15 @@ Fairness comes from symmetry: 1v1 maps are 180-degree symmetric, FFA maps are
 90-degree symmetric with 4 slots (ffa3 leaves one slot empty; its resources stay
 neutral on the map).
 
+TERRAIN (s2.1, "the district"): the map is a dead suburb. A street grid of
+3-tile avenues (recomputed from the seed by the client, see layout.py) organises
+everything: blocks of houses stand beside the avenues, traffic jams of wrecked
+cars sit on them, and groves and rock outcrops fill the wasteland in between.
+Houses, jams, groves and rocks are all `blocked` (impassable for ground units,
+fliers pass); collapsed houses and the debris around jams are `rubble` (a
+worker clears it for metal). The client tells them apart by shape and by their
+position relative to the streets, so the state keeps its five tile kinds.
+
 NOMAD START (s2.0, the AoE2 "Nomad" opening): nobody owns a building. Each slot
 gets a crew of workers plus one striker standing on cleared ground, next to the
 resources a well-placed core banks instantly: a wild pod cluster (energy) two
@@ -16,10 +25,10 @@ from __future__ import annotations
 
 from cero_engine import rules
 from cero_engine.fog import update_fog
+from cero_engine.layout import is_road, road_layout
 from cero_engine.pcg import PCG32
 from cero_engine.state import Entity, Player, State, tk
 from cero_engine.stats import unit_max_hp
-
 # Layout of one start zone, relative to the IDEAL core anchor (the 2x2 core
 # would occupy (0,0)..(1,1)). Nothing is placed on that footprint or its ring.
 START_WORKER_OFFSETS = [(-1, 3), (0, 3), (1, 3), (2, 3)]
@@ -33,8 +42,9 @@ EXPANSION_POD_SHAPE = [(0, 0), (1, 0), (0, 1)]
 
 
 def start_anchor(size: int) -> tuple[int, int]:
-    """Ideal core anchor of slot 0; the other slots are symmetry transforms."""
-    return size // 4, size // 4
+    """Ideal core anchor of slot 0; the other slots are symmetry transforms.
+    A fifth of the way in from the corner: rivals are several blocks apart."""
+    return size // 5, size // 5
 
 
 def _transforms(fmt: str, size: int):
@@ -87,38 +97,75 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
 
     tiles = [["plain" for _ in range(size)] for _ in range(size)]
 
-    # 1. Symmetric terrain noise: roll once per orbit (canonical = min member).
-    for y in range(size):
-        for x in range(size):
-            orbit = _orbit(fmt, size, x, y)
-            if (x, y) != min(orbit):
-                continue
-            r = rng.randint(100)
-            val = "blocked" if r < 8 else ("rubble" if r < 12 else "plain")
-            for ox, oy in orbit:
-                tiles[oy][ox] = val
+    rows, cols = road_layout(seed, fmt, size)
 
-    # 2. Cellular-automaton smoothing of blocked blobs (2 passes, symmetric input
-    #    with a rotation-invariant neighborhood stays symmetric).
-    for _ in range(2):
-        nxt = [row[:] for row in tiles]
-        for y in range(size):
-            for x in range(size):
-                n = 0
-                for dy in (-1, 0, 1):
-                    for dx in (-1, 0, 1):
-                        if dx == 0 and dy == 0:
-                            continue
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < size and 0 <= ny < size and tiles[ny][nx] == "blocked":
-                            n += 1
-                if tiles[y][x] == "blocked":
-                    nxt[y][x] = "blocked" if n >= 2 else "plain"
-                elif n >= 5:
-                    nxt[y][x] = "blocked"
-        tiles = nxt
+    def stamp(x: int, y: int, kind: str) -> None:
+        """Stamp a tile and its symmetric images (never over a street)."""
+        for ox, oy in _orbit(fmt, size, x, y):
+            if 0 <= ox < size and 0 <= oy < size and not is_road(rows, cols, ox, oy):
+                tiles[oy][ox] = kind
 
-    # 3. Clear the start zones: the crews need room to found a city.
+    def along(horizontal: bool, a: int, b: int) -> tuple[int, int]:
+        return (a, b) if horizontal else (b, a)
+
+    # 1. Neighbourhoods: rows of houses (4-6 x 3-5 tiles) on one side of an
+    #    avenue, one-tile alleys between them, a sidewalk along the street.
+    #    One house in five collapsed: its footprint is rubble instead.
+    for _ in range(max(3, size // 20)):
+        horizontal = rng.randint(2) == 0
+        centres = rows if horizontal else cols
+        if not centres:
+            continue
+        centre = centres[rng.randint(len(centres))]
+        side = 1 if rng.randint(2) else -1
+        cursor = 3 + rng.randint(max(1, size - 6))
+        for _ in range(5 + rng.randint(3)):
+            # Every third lot is a bigger building (the one that ends up a ruin).
+            large = rng.randint(3) == 0
+            width = (5 + rng.randint(4)) if large else (4 + rng.randint(3))
+            depth = (4 + rng.randint(3)) if large else (3 + rng.randint(3))
+            kind = "rubble" if rng.randint(100) < 20 else "blocked"
+            for i in range(width):
+                for j in range(depth):
+                    stamp(*along(horizontal, cursor + i, centre + side * (3 + j)), kind)
+            cursor += width + 1 + rng.randint(2)
+
+    # 2. Traffic jams: the war started at rush hour. Two lanes of wrecks on a
+    #    stretch of avenue, the middle lane with gaps, debris on the sidewalks.
+    for _ in range(max(4, size // 16)):
+        horizontal = rng.randint(2) == 0
+        centres = rows if horizontal else cols
+        if not centres:
+            continue
+        centre = centres[rng.randint(len(centres))]
+        start = 2 + rng.randint(max(1, size - 4))
+        for k in range(5 + rng.randint(10)):
+            for lane in (-1, 0, 1):
+                if lane == 0 and rng.randint(100) < 40:
+                    continue
+                x, y = along(horizontal, start + k, centre + lane)
+                for ox, oy in _orbit(fmt, size, x, y):
+                    if 0 <= ox < size and 0 <= oy < size:
+                        tiles[oy][ox] = "blocked"
+            if rng.randint(100) < 35:
+                stamp(*along(horizontal, start + k, centre + (2 if rng.randint(2) else -2)), "rubble")
+
+    # 3. Groves and rock outcrops: round blobs off the streets (the client
+    #    decides which blob is trees and which is stone).
+    for _ in range(max(3, size // 20)):
+        cx = 4 + rng.randint(max(1, size - 8))
+        cy = 4 + rng.randint(max(1, size - 8))
+        radius = 2 + rng.randint(3)
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if dx * dx + dy * dy <= radius * radius - rng.randint(radius * 2):
+                    stamp(cx + dx, cy + dy, "blocked")
+
+    # 4. A little loose rubble in the wasteland.
+    for _ in range(size * size // 300):
+        stamp(rng.randint(size), rng.randint(size), "rubble")
+
+    # 5. Clear the start zones: the crews need room to found a city.
     for t in transforms:
         sx, sy = t(ax, ay)
         for y in range(max(0, sy - START_CLEAR_RADIUS), min(size, sy + START_CLEAR_RADIUS + 1)):
@@ -136,7 +183,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
         tiles[y][x] = "pod"
         pods[tk(x, y)] = rules.POD_ENERGY
 
-    # 4. Start resources for every slot (ffa3: the empty slot keeps them, neutral).
+    # 6. Start resources for every slot (ffa3: the empty slot keeps them, neutral).
     for t in transforms:
         for ox, oy in NEAR_PODS + FAR_PODS:
             place_pod(*t(ax + ox, ay + oy))
@@ -150,7 +197,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
                 return True
         return False
 
-    # 5. Center veins: a contested El Dorado in the middle of the super map.
+    # 7. Center veins: a contested El Dorado in the middle of the super map.
     #    Rolls scale with map size (96 -> 6 rolled orbits = 12 veins in 1v1).
     band = max(4, size // 8)
     center_lo, center_hi = size // 2 - band, size // 2 + band - 1
@@ -174,7 +221,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
             if tiles[y][x] == "plain":
                 place_vein(x, y)
 
-    # 5b. Expansion veins scattered across the wasteland (outside the start
+    # 7b. Expansion veins scattered across the wasteland (outside the start
     #     zones), so the long march across the map has places worth stopping.
     expansions = size // 12
     placed = 0
@@ -193,7 +240,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
             place_vein(ox, oy)
         placed += 1
 
-    # 5c. Expansion pod clusters: wild energy out in the wasteland (the forage
+    # 7c. Expansion pod clusters: wild energy out in the wasteland (the forage
     #     and hunt you find while exploring; an expansion depot makes them pay).
     pod_rolls = max(2, size // 24)
     placed = 0
@@ -216,7 +263,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
         pod_cluster_origins.append((x, y))
         placed += 1
 
-    # 6. Camps, scaled with map size (96 -> 3 rolled orbits = 6 camps in 1v1),
+    # 8. Camps, scaled with map size (96 -> 3 rolled orbits = 6 camps in 1v1),
     #    spread out with a minimum distance between them.
     camp_positions: list[tuple[int, int]] = []
     camp_rolls = max(1, size // 32)
@@ -239,7 +286,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
     if not camp_positions:  # extremely unlikely fallback, still deterministic
         camp_positions = [t(size // 2 - 6, 8) for t in transforms]
 
-    # 7. Build the state and place entities in a fixed, deterministic order.
+    # 9. Build the state and place entities in a fixed, deterministic order.
     players = [Player(id=i, lineage=lineages[i], energy=rules.STARTING_ENERGY,
                       metal=rules.STARTING_METAL) for i in range(n_players)]
     state = State(turn=0, format=fmt, size=size, max_turns=rules.MAX_TURNS,
@@ -294,7 +341,7 @@ def generate_map(seed: int, fmt: str, lineages: list[str]) -> State:
                                     camp_home=[camp.x, camp.y]))
             guards += 1
 
-    # 8. Connectivity: every start zone must reach slot 0's over plain tiles.
+    # 10. Connectivity: every start zone must reach slot 0's over plain tiles.
     _ensure_connectivity(state, [t(ax, ay) for t in transforms][:n_players])
 
     update_fog(state)

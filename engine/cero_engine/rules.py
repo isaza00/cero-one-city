@@ -16,12 +16,12 @@ s2.0 "age of machines" — the Age of Empires model, robot-themed:
     researched right now, with costs and the reason when something is locked.
 """
 
-RULESET_VERSION = "s2.0"  # "age of machines": nomad start, drop-off economy, pods, crews, menus
+RULESET_VERSION = "s2.1"  # "the district": street grid, house blocks, jams, groves; 192/224 maps, starts at size/5
 
 # ---------------------------------------------------------------- match basics
 MAX_TURNS = 80
-MAP_SIZE_1V1 = 96
-MAP_SIZE_FFA = 120
+MAP_SIZE_1V1 = 192
+MAP_SIZE_FFA = 224
 MAX_ORDERS_PER_TURN = 120
 
 # Nomad start (AoE2 "Nomad"): a handful of units and the metal for one core.

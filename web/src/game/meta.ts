@@ -146,7 +146,8 @@ export const TERRAIN_INFO: Record<string, { label: string; aoe: string; power: s
   vein: { label: "Metal vein", aoe: "Gold mine", power: "300 metal, 6 per worker per turn, finite. Carry it to a core or depot." },
   pod: { label: "Human pods", aoe: "Berries / hunt", power: "200 energy of dormant humans in capsules, 8 per worker per turn, finite. Find them, harvest them, then farm cocoons." },
   rubble: { label: "Rubble", aoe: "Cleared debris", power: "A worker clears it in 2 turns for 10 metal." },
-  blocked: { label: "Scrap heap", aoe: "Cliff", power: "Impassable for ground units; fliers pass." },
+  blocked: { label: "Ruins and wrecks", aoe: "Cliff / forest",
+             power: "Houses, jammed cars, groves and rock. Impassable for ground units; fliers pass." },
   scrap: { label: "Scrap", aoe: "Relic gold", power: "What dead robots leave behind. A worker salvages 20 per turn." },
 };
 
