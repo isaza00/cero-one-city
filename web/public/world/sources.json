@@ -1,0 +1,82 @@
+[
+  {
+    "file": "soldier.glb",
+    "source": "Adobe Mixamo, distributed in the Three.js examples",
+    "license": "Mixamo royalty-free use incorporated in games; https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html",
+    "download": "https://raw.githubusercontent.com/mrdoob/three.js/r185/examples/models/gltf/Soldier.glb",
+    "bytes": 2160468,
+    "sha256": "dfb230fc1f942f259dd00281a1186953ad602fc5d69067ce63e24b2aa439736b"
+  },
+  {
+    "file": "rubble_diff.jpg",
+    "source": "https://polyhaven.com/a/rubble",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rubble/rubble_diff_1k.jpg",
+    "bytes": 781237,
+    "sha256": "a656a0692138c045c9707933cf0551559b316b817e90089abf12b6ba76e5e779"
+  },
+  {
+    "file": "rubble_nor_gl.jpg",
+    "source": "https://polyhaven.com/a/rubble",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rubble/rubble_nor_gl_1k.jpg",
+    "bytes": 1124135,
+    "sha256": "e0f1c7d35a3dc994dd0fd3a1e65f469369c5e92172e158ced34e2368d89fccd2"
+  },
+  {
+    "file": "rubble_rough.jpg",
+    "source": "https://polyhaven.com/a/rubble",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rubble/rubble_rough_1k.jpg",
+    "bytes": 380186,
+    "sha256": "b96f0bbfdde0bb9058e3e2a7566a852f0ce40b159835538bdbe3f6b565a19238"
+  },
+  {
+    "file": "concrete_diff.jpg",
+    "source": "https://polyhaven.com/a/concrete",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete/concrete_diff_1k.jpg",
+    "bytes": 543902,
+    "sha256": "046c0e2aebe31e6043a6bc074e779f6a345f1d823d0ca1c69446c5cabadefa8a"
+  },
+  {
+    "file": "concrete_nor_gl.jpg",
+    "source": "https://polyhaven.com/a/concrete",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete/concrete_nor_gl_1k.jpg",
+    "bytes": 114447,
+    "sha256": "298a0e93040c9d76d239a894bdf28a9787755ea5f22baa068ffa8075369ee428"
+  },
+  {
+    "file": "concrete_rough.jpg",
+    "source": "https://polyhaven.com/a/concrete",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete/concrete_rough_1k.jpg",
+    "bytes": 215714,
+    "sha256": "0dc74e17295160cf2fc214bf22a57fddc68f261e2cbacebb706f5b3fa5d07458"
+  },
+  {
+    "file": "rocky_terrain_02_diff.jpg",
+    "source": "https://polyhaven.com/a/rocky_terrain_02",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rocky_terrain_02/rocky_terrain_02_diff_1k.jpg",
+    "bytes": 843188,
+    "sha256": "d570c10b1d5302f4fde9e0e94f4cbab0d5e112fc3fe2b3b91c38a98bd3ddaf4b"
+  },
+  {
+    "file": "rocky_terrain_02_nor_gl.jpg",
+    "source": "https://polyhaven.com/a/rocky_terrain_02",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rocky_terrain_02/rocky_terrain_02_nor_gl_1k.jpg",
+    "bytes": 993692,
+    "sha256": "f4f9d9671c660f4e509e96d5da3091887dfd557e1353e313fa2d1dc789499ffd"
+  },
+  {
+    "file": "rocky_terrain_02_rough.jpg",
+    "source": "https://polyhaven.com/a/rocky_terrain_02",
+    "license": "CC0-1.0",
+    "download": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rocky_terrain_02/rocky_terrain_02_rough_1k.jpg",
+    "bytes": 437094,
+    "sha256": "8652ee05de206888eb77f84df7c8080f6ffef27afadb7917127726570b66c45d"
+  }
+]

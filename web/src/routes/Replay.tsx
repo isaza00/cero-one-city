@@ -14,6 +14,7 @@ export default function Replay() {
   const [params, setParams] = useSearchParams();
   const [turns, setTurns] = useState<number[]>([]);
   const [players, setPlayers] = useState<MatchPlayerOut[]>([]);
+  const [worldSeed, setWorldSeed] = useState<number | undefined>();
   const [current, setCurrent] = useState(Number(params.get("t") ?? 0));
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -23,8 +24,8 @@ export default function Replay() {
   const [feedAll, setFeedAll] = useState<FeedLine[]>([]);
 
   useEffect(() => {
-    get<{ turns_available: number[] }>(`/api/matches/${matchId}/replay`)
-      .then((r) => setTurns(r.turns_available));
+    get<{ turns_available: number[]; map_seed?: number }>(`/api/matches/${matchId}/replay`)
+      .then((r) => { setTurns(r.turns_available); setWorldSeed(r.map_seed); });
     get<{ players: MatchPlayerOut[] }>(`/api/matches/${matchId}`)
       .then((r) => setPlayers(r.players));
   }, [matchId]);
@@ -76,7 +77,7 @@ export default function Replay() {
       </div>
       <div className="row">
         <div>
-          <MapView state={data?.state ?? null} perspective={perspective} sizePx={620} />
+          <MapView state={data?.state ?? null} perspective={perspective} sizePx={620} worldSeed={worldSeed} />
           <div className="card subtle" style={{ marginTop: 10 }}>
             <button onClick={() => setPlaying(!playing)}>
               {playing ? "Pause" : "Play"}
