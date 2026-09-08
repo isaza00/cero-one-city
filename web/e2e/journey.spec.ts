@@ -60,9 +60,9 @@ test("full journey with screenshots", async ({ page }) => {
   // ------------------------------------------------------- watch it live
   await expect(page.locator(".map-host canvas")).toBeVisible({ timeout: 30_000 });
   // Wait until the mid-game (armies on the move), then shoot the board.
-  await expect(page.getByRole("heading", { name: /turn (1[5-9]|[2-4][0-9])\// }))
-    .toBeVisible({ timeout: 150_000 });
-  await expect(page.locator(".feed .line").first()).toBeVisible();
+  await expect(page.locator(".cmd-turn")).toHaveText(/turn (1[5-9]|[2-4][0-9])\//, { timeout: 150_000 });
+  await page.getByRole("tab", { name: "Actions" }).click();
+  await expect(page.locator(".abx-row").first()).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/4-live-match.png` });
 
   // ---------------------------------------- match ends (Results button shows)
