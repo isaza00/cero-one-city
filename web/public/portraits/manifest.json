@@ -8,7 +8,7 @@
     0.6,
     1.15
   ],
-  "generatedAt": "2026-09-07T14:47:58.012Z",
+  "generatedAt": "2026-09-09T00:46:31.287Z",
   "count": 116,
   "subjects": [
     {
@@ -602,12 +602,12 @@
       "type": "worker",
       "owner": -1,
       "extent": [
-        0.6,
-        1.08,
-        0.6
+        0.43,
+        1.18,
+        0.35
       ],
-      "triangles": 30408,
-      "calls": 43
+      "triangles": 119456,
+      "calls": 27
     },
     {
       "file": "worker_p0.jpg",
@@ -615,12 +615,12 @@
       "type": "worker",
       "owner": 0,
       "extent": [
-        0.6,
-        1.08,
-        0.6
+        0.43,
+        1.18,
+        0.35
       ],
-      "triangles": 30408,
-      "calls": 43
+      "triangles": 119456,
+      "calls": 27
     },
     {
       "file": "worker_p1.jpg",
@@ -628,12 +628,12 @@
       "type": "worker",
       "owner": 1,
       "extent": [
-        0.6,
-        1.08,
-        0.6
+        0.43,
+        1.18,
+        0.35
       ],
-      "triangles": 30408,
-      "calls": 43
+      "triangles": 119456,
+      "calls": 27
     },
     {
       "file": "worker_p2.jpg",
@@ -641,12 +641,12 @@
       "type": "worker",
       "owner": 2,
       "extent": [
-        0.6,
-        1.08,
-        0.6
+        0.43,
+        1.18,
+        0.35
       ],
-      "triangles": 30408,
-      "calls": 43
+      "triangles": 119456,
+      "calls": 27
     },
     {
       "file": "worker_p3.jpg",
@@ -654,12 +654,12 @@
       "type": "worker",
       "owner": 3,
       "extent": [
-        0.6,
-        1.08,
-        0.6
+        0.43,
+        1.18,
+        0.35
       ],
-      "triangles": 30408,
-      "calls": 43
+      "triangles": 119456,
+      "calls": 27
     },
     {
       "file": "striker_n.jpg",
@@ -667,12 +667,12 @@
       "type": "striker",
       "owner": -1,
       "extent": [
-        0.69,
+        0.5,
         1.35,
-        0.75
+        0.89
       ],
-      "triangles": 34448,
-      "calls": 43
+      "triangles": 120600,
+      "calls": 27
     },
     {
       "file": "striker_p0.jpg",
@@ -680,12 +680,12 @@
       "type": "striker",
       "owner": 0,
       "extent": [
-        0.69,
+        0.5,
         1.35,
-        0.75
+        0.89
       ],
-      "triangles": 34448,
-      "calls": 43
+      "triangles": 120600,
+      "calls": 27
     },
     {
       "file": "striker_p1.jpg",
@@ -693,12 +693,12 @@
       "type": "striker",
       "owner": 1,
       "extent": [
-        0.69,
+        0.5,
         1.35,
-        0.75
+        0.89
       ],
-      "triangles": 34448,
-      "calls": 43
+      "triangles": 120600,
+      "calls": 27
     },
     {
       "file": "striker_p2.jpg",
@@ -706,12 +706,12 @@
       "type": "striker",
       "owner": 2,
       "extent": [
-        0.69,
+        0.5,
         1.35,
-        0.75
+        0.89
       ],
-      "triangles": 34448,
-      "calls": 43
+      "triangles": 120600,
+      "calls": 27
     },
     {
       "file": "striker_p3.jpg",
@@ -719,12 +719,12 @@
       "type": "striker",
       "owner": 3,
       "extent": [
-        0.69,
+        0.5,
         1.35,
-        0.75
+        0.89
       ],
-      "triangles": 34448,
-      "calls": 43
+      "triangles": 120600,
+      "calls": 27
     },
     {
       "file": "launcher_n.jpg",
@@ -732,12 +732,12 @@
       "type": "launcher",
       "owner": -1,
       "extent": [
-        0.8,
+        0.47,
         1.35,
-        0.54
+        0.31
       ],
-      "triangles": 32064,
-      "calls": 41
+      "triangles": 118752,
+      "calls": 25
     },
     {
       "file": "launcher_p0.jpg",
@@ -745,12 +745,12 @@
       "type": "launcher",
       "owner": 0,
       "extent": [
-        0.8,
+        0.47,
         1.35,
-        0.54
+        0.31
       ],
-      "triangles": 32064,
-      "calls": 41
+      "triangles": 118752,
+      "calls": 25
     },
     {
       "file": "launcher_p1.jpg",
@@ -758,12 +758,12 @@
       "type": "launcher",
       "owner": 1,
       "extent": [
-        0.8,
+        0.48,
         1.35,
-        0.54
+        0.31
       ],
-      "triangles": 32064,
-      "calls": 41
+      "triangles": 118752,
+      "calls": 25
     },
     {
       "file": "launcher_p2.jpg",
@@ -771,12 +771,12 @@
       "type": "launcher",
       "owner": 2,
       "extent": [
-        0.8,
+        0.47,
         1.35,
-        0.54
+        0.31
       ],
-      "triangles": 32064,
-      "calls": 41
+      "triangles": 118752,
+      "calls": 25
     },
     {
       "file": "launcher_p3.jpg",
@@ -784,12 +784,12 @@
       "type": "launcher",
       "owner": 3,
       "extent": [
-        0.8,
+        0.47,
         1.35,
-        0.54
+        0.31
       ],
-      "triangles": 32064,
-      "calls": 41
+      "triangles": 118752,
+      "calls": 25
     },
     {
       "file": "rider_n.jpg",
@@ -1057,12 +1057,12 @@
       "type": "colossus",
       "owner": -1,
       "extent": [
-        2.69,
+        0.83,
         2.35,
-        1.24
+        1.06
       ],
-      "triangles": 36464,
-      "calls": 51
+      "triangles": 119752,
+      "calls": 35
     },
     {
       "file": "colossus_p0.jpg",
@@ -1070,12 +1070,12 @@
       "type": "colossus",
       "owner": 0,
       "extent": [
-        2.69,
+        0.83,
         2.35,
-        1.24
+        1.05
       ],
-      "triangles": 36464,
-      "calls": 51
+      "triangles": 119752,
+      "calls": 35
     },
     {
       "file": "colossus_p1.jpg",
@@ -1083,12 +1083,12 @@
       "type": "colossus",
       "owner": 1,
       "extent": [
-        2.69,
+        0.83,
         2.35,
-        1.24
+        1.05
       ],
-      "triangles": 36464,
-      "calls": 51
+      "triangles": 119752,
+      "calls": 35
     },
     {
       "file": "colossus_p2.jpg",
@@ -1096,12 +1096,12 @@
       "type": "colossus",
       "owner": 2,
       "extent": [
-        2.69,
+        0.83,
         2.35,
-        1.24
+        1.06
       ],
-      "triangles": 36464,
-      "calls": 51
+      "triangles": 119752,
+      "calls": 35
     },
     {
       "file": "colossus_p3.jpg",
@@ -1109,12 +1109,12 @@
       "type": "colossus",
       "owner": 3,
       "extent": [
-        2.69,
+        0.83,
         2.35,
-        1.24
+        1.06
       ],
-      "triangles": 36464,
-      "calls": 51
+      "triangles": 119752,
+      "calls": 35
     },
     {
       "file": "human_n.jpg",
@@ -1148,7 +1148,7 @@
       "type": "human",
       "owner": 1,
       "extent": [
-        0.53,
+        0.54,
         1.24,
         0.83
       ],
@@ -1161,7 +1161,7 @@
       "type": "human",
       "owner": 2,
       "extent": [
-        0.54,
+        0.53,
         1.24,
         0.84
       ],
@@ -1174,7 +1174,7 @@
       "type": "human",
       "owner": 3,
       "extent": [
-        0.54,
+        0.53,
         1.24,
         0.84
       ],
@@ -1252,12 +1252,12 @@
       "type": "anvil",
       "owner": -1,
       "extent": [
-        1.26,
+        0.58,
         1.55,
-        0.7
+        0.33
       ],
-      "triangles": 27056,
-      "calls": 39
+      "triangles": 115960,
+      "calls": 31
     },
     {
       "file": "anvil_p0.jpg",
@@ -1265,12 +1265,12 @@
       "type": "anvil",
       "owner": 0,
       "extent": [
-        1.26,
+        0.58,
         1.55,
-        0.7
+        0.33
       ],
-      "triangles": 27056,
-      "calls": 39
+      "triangles": 115960,
+      "calls": 31
     },
     {
       "file": "anvil_p1.jpg",
@@ -1278,12 +1278,12 @@
       "type": "anvil",
       "owner": 1,
       "extent": [
-        1.26,
+        0.58,
         1.55,
-        0.7
+        0.33
       ],
-      "triangles": 27056,
-      "calls": 39
+      "triangles": 115960,
+      "calls": 31
     },
     {
       "file": "anvil_p2.jpg",
@@ -1291,12 +1291,12 @@
       "type": "anvil",
       "owner": 2,
       "extent": [
-        1.26,
+        0.58,
         1.55,
-        0.7
+        0.33
       ],
-      "triangles": 27056,
-      "calls": 39
+      "triangles": 115960,
+      "calls": 31
     },
     {
       "file": "anvil_p3.jpg",
@@ -1304,12 +1304,12 @@
       "type": "anvil",
       "owner": 3,
       "extent": [
-        1.26,
+        0.58,
         1.55,
-        0.7
+        0.33
       ],
-      "triangles": 27056,
-      "calls": 39
+      "triangles": 115960,
+      "calls": 31
     },
     {
       "file": "watcher_n.jpg",

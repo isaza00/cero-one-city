@@ -8,6 +8,14 @@
     "sha256": "dfb230fc1f942f259dd00281a1186953ad602fc5d69067ce63e24b2aa439736b"
   },
   {
+    "file": "xbot.glb",
+    "source": "Adobe Mixamo, distributed in the Three.js examples",
+    "license": "Mixamo royalty-free use incorporated in games; https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html",
+    "download": "https://raw.githubusercontent.com/mrdoob/three.js/r185/examples/models/gltf/Xbot.glb",
+    "bytes": 2930032,
+    "sha256": "002f8d269de68e5dce3d25195caf390d1aa359bbfaae3fcf4c8dc78ec36c3ba5"
+  },
+  {
     "file": "rubble_diff.jpg",
     "source": "https://polyhaven.com/a/rubble",
     "license": "CC0-1.0",

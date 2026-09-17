@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
+import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { PLAYER_COLORS } from "../game/meta";
 
 export interface UnitModel {
@@ -11,7 +13,7 @@ export interface UnitModel {
 
 export interface UnitMaterials { teamColors?: readonly THREE.ColorRepresentation[]; }
 type Triple = [number, number, number];
-type Surface = "metal" | "team" | "eyes";
+type Surface = "metal" | "team" | "eyes" | "chrome" | "plasma";
 const DESIGNS = {
   worker: ["biped", 0.85, 0.34, 0.38, 0.27], striker: ["biped", 1.02, 0.43, 0.46, 0.23],
   launcher: ["biped", 0.95, 0.38, 0.44, 0.29], rider: ["cycle", 0.45, 0, 0, 0.2],
@@ -22,6 +24,12 @@ const DESIGNS = {
   prism: ["tripod", 0.67, 0.24, 0.30, 0.35],
 } as const;
 const TITANIUM = 0x9ba6a7, GRAPHITE = 0x252e33, ARMOR = 0x4e5d60, BRASS = 0x978468;
+/** The humanoid machines: the chrome endoskeleton rig (Xbot) with a few
+ *  fittings each. Everything else stays procedural. */
+const HUMANOIDS = new Set(["worker", "striker", "launcher", "anvil", "colossus"]);
+const BONES = ["Head", "Spine2", "LeftArm", "RightArm", "LeftForeArm", "RightForeArm", "LeftHand", "RightHand"] as const;
+type Bone = typeof BONES[number];
+interface Fitting { bone: Bone; group: THREE.Group; }
 const finite = (value: number, fallback = 0) => Number.isFinite(value) ? value : fallback;
 
 export class UnitModels {
@@ -35,6 +43,43 @@ export class UnitModels {
   private teams: THREE.MeshStandardMaterial[];
   private neutral = new THREE.MeshStandardMaterial({ color: 0x99958a, roughness: 0.78, metalness: 0.25 });
   private shapes: Record<string, THREE.BufferGeometry>;
+  private rig: GLTF | null = null;
+  private fittings = new Map<string, Fitting[]>();
+  // The endoskeleton: polished chrome shell over gunmetal joints and pistons.
+  private chrome = new THREE.MeshStandardMaterial({ color: 0xe1e5e8, roughness: 0.3, metalness: 1 });
+  private joints = new THREE.MeshStandardMaterial({ color: 0x2c3237, roughness: 0.5, metalness: 0.85 });
+  private plasma = new THREE.MeshStandardMaterial({ color: 0x9be9ff, emissive: 0x39c8ff, emissiveIntensity: 2.2, roughness: 0.4 });
+
+  /** The rigged humanoid every HUMANOIDS type is built on. Without it those
+   *  types fall back to the procedural builder. */
+  setRig(rig: GLTF | undefined): void {
+    this.rig = rig ?? null;
+    if (rig && !rig.scene.userData.sculpted) { rig.scene.userData.sculpted = true; this.sculpt(rig.scene); }
+  }
+
+  /** One-time surgery on the rig's bind pose: the dome head is collapsed
+   *  into the neck (the procedural skull takes its place), the pectorals
+   *  are pulled back to the ribcage and the waist is thickened, so the body
+   *  reads as an endoskeleton rather than a mannequin. */
+  private sculpt(scene: THREE.Object3D): void {
+    const ramp = THREE.MathUtils.smoothstep;
+    scene.traverse(node => {
+      if (!(node instanceof THREE.SkinnedMesh)) return;
+      const position = node.geometry.getAttribute("position") as THREE.BufferAttribute;
+      for (let index = 0; index < position.count; index++) {
+        const x = position.getX(index), y = position.getY(index), z = position.getZ(index);
+        if (y > 1.565) { position.setXYZ(index, x * 0.02, 1.56, z * 0.02); continue; }
+        if (Math.abs(x) > 0.22) continue;
+        const chest = ramp(y, 1.2, 1.28) * (1 - ramp(y, 1.4, 1.5));
+        const waist = ramp(y, 0.95, 1.05) * (1 - ramp(y, 1.18, 1.3));
+        position.setX(index, x * (1 + 0.26 * waist + 0.1 * chest));
+        if (z > 0.04) position.setZ(index, z - (z - 0.04) * 0.55 * chest);
+      }
+      position.needsUpdate = true;
+      node.geometry.computeVertexNormals();
+      node.geometry.computeBoundingBox(); node.geometry.computeBoundingSphere();
+    });
+  }
 
   constructor(materials: UnitMaterials = {}) {
     this.teams = (materials.teamColors?.length ? materials.teamColors : PLAYER_COLORS).map(color =>
@@ -54,12 +99,12 @@ export class UnitModels {
     }
   }
 
-  private build(type: keyof typeof DESIGNS): THREE.Group {
-    const [layout, hipHeight, upperLength, lowerLength, width] = DESIGNS[type];
-    const heavy = ["anvil", "colossus", "walking_tower"].includes(type);
-    const root = new THREE.Group();
+  /** Part assembly: named joints, primitive parts tinted by vertex colour and
+   *  merged per joint and surface when flushed, so a model costs a handful
+   *  of draw calls. */
+  private kit() {
     const batches = new Map<THREE.Group, Map<Surface, THREE.BufferGeometry[]>>();
-    const joint = (parent: THREE.Group, name: string, position: Triple, motion = "", phase = 0) => {
+    const joint = (parent: THREE.Object3D, name: string, position: Triple, motion = "", phase = 0) => {
       const group = new THREE.Group(); group.name = name; group.position.set(...position);
       group.userData = { motion, phase }; parent.add(group); return group;
     };
@@ -83,6 +128,25 @@ export class UnitModels {
       part(parent, "tube", first.add(second).multiplyScalar(0.5).toArray() as Triple,
         [radius, direction.length(), radius], color, "metal", [rotation.x, rotation.y, rotation.z]);
     };
+    const flush = () => {
+      for (const [parent, surfaces] of batches) for (const [surface, buffers] of surfaces) {
+        const merged = mergeGeometries(buffers, false)!; buffers.forEach(buffer => buffer.dispose());
+        merged.computeBoundingBox(); merged.computeBoundingSphere(); this.geometry.add(merged);
+        const material = { metal: this.metal, eyes: this.eyes, chrome: this.chrome, plasma: this.plasma, team: this.neutral }[surface];
+        const mesh = new THREE.Mesh(merged, material);
+        mesh.name = `${parent.name}-${surface}`; mesh.userData.surface = surface;
+        mesh.castShadow = mesh.receiveShadow = true; parent.add(mesh);
+      }
+      batches.clear();
+    };
+    return { joint, part, rod, flush };
+  }
+
+  private build(type: keyof typeof DESIGNS): THREE.Group {
+    const [layout, hipHeight, upperLength, lowerLength, width] = DESIGNS[type];
+    const heavy = ["anvil", "colossus", "walking_tower"].includes(type);
+    const root = new THREE.Group();
+    const { joint, part, rod, flush } = this.kit();
     const chassis = joint(root, "chassis", [0, hipHeight, 0], layout === "air" || layout === "swarm" ? "hover" : "chassis");
     const badge = joint(chassis, "faction-mark", [0, 0.25, 0.16]);
     for (let stripe = 0; stripe < 4; stripe++) part(badge, "plate", [(stripe - 1.5) * 0.037, 0, 0], [0.019, 0.07, 0.012], 0xffffff, "team");
@@ -282,23 +346,218 @@ export class UnitModels {
         part(chassis, "plate", [0, 0.44, 0], [0.31, 0.08, 0.03], ARMOR);
       }
     }
-    for (const [parent, surfaces] of batches) for (const [surface, buffers] of surfaces) {
-      const merged = mergeGeometries(buffers, false)!; buffers.forEach(buffer => buffer.dispose());
-      merged.computeBoundingBox(); merged.computeBoundingSphere(); this.geometry.add(merged);
-      const mesh = new THREE.Mesh(merged, surface === "metal" ? this.metal : surface === "eyes" ? this.eyes : this.neutral);
-      mesh.name = `${parent.name}-${surface}`; mesh.userData.surface = surface;
-      mesh.castShadow = mesh.receiveShadow = true; parent.add(mesh);
-    }
+    flush();
     return root;
+  }
+
+  /** The fittings that tell one humanoid from another, in the rig's own
+   *  space: the Xbot stands 1.8 m tall at the origin, faces +z, right side
+   *  at -x, arms hanging (idle pose at time 0). Each fitting is later
+   *  attached to its bone, so it moves with the animation. Every humanoid
+   *  shares the T-800 signature: a chrome skull with red optics and bared
+   *  teeth on the neck pistons, plus faction armbands and chest stripes. */
+  private buildFittings(type: string): Fitting[] {
+    const { joint, part, rod, flush } = this.kit();
+    const root = new THREE.Group();
+    const fittings: Fitting[] = [];
+    const fit = (bone: Bone, name: string, position: Triple, motion = "", rotation: Triple = [0, 0, 0]) => {
+      const group = joint(root, name, position, motion); group.rotation.set(...rotation);
+      fittings.push({ bone, group }); return group;
+    };
+    const heavy = type === "anvil" || type === "colossus";
+    const CHROME: Surface = "chrome", PLASMA: Surface = "plasma";
+    // The skull sits on the head bone where the rig's dome used to be:
+    // cranium, brow, orbits with red optics, cheekbones, nasal cavity,
+    // two rows of teeth and the pistons down to the neck.
+    const skull = fit("Head", "skull", [0, 1.6, 0.01]);
+    part(skull, "ball", [0, 0.062, -0.03], [0.1, 0.095, 0.105], 0xffffff, CHROME);
+    part(skull, "plate", [0, 0.075, 0.07], [0.17, 0.032, 0.05], 0xffffff, CHROME, [0.3, 0, 0]);
+    for (const side of [-1, 1]) {
+      part(skull, "ball", [side * 0.037, 0.04, 0.078], [0.03, 0.028, 0.025], GRAPHITE);
+      part(skull, "ring", [side * 0.037, 0.04, 0.092], [0.028, 0.026, 0.02], 0xffffff, CHROME);
+      part(skull, "ball", [side * 0.037, 0.04, 0.094], [0.015, 0.013, 0.012], 0xffffff, "eyes");
+      part(skull, "plate", [side * 0.072, 0.02, 0.04], [0.028, 0.045, 0.07], 0xffffff, CHROME, [0, side * 0.3, 0]);
+      part(skull, "plate", [side * 0.085, 0.045, -0.02], [0.02, 0.06, 0.08], 0xffffff, CHROME);
+      rod(skull, [side * 0.028, -0.075, -0.03], [side * 0.028, 0.01, -0.02], 0.011, GRAPHITE);
+    }
+    part(skull, "plate", [0, 0.015, 0.095], [0.02, 0.03, 0.02], GRAPHITE);
+    part(skull, "plate", [0, -0.015, 0.075], [0.085, 0.022, 0.05], 0xffffff, CHROME);
+    for (let tooth = 0; tooth < 6; tooth++) part(skull, "plate", [(tooth - 2.5) * 0.013, -0.033, 0.094], [0.009, 0.014, 0.012], 0xffffff, CHROME);
+    part(skull, "plate", [0, -0.05, 0.062], [0.08, 0.02, 0.07], 0xffffff, CHROME);
+    part(skull, "ball", [0, -0.02, -0.01], [0.055, 0.055, 0.06], GRAPHITE);
+    // Faction: an armband on each upper arm and the stripes on the chest.
+    part(fit("LeftArm", "armband-left", [0.185, 1.285, 0], "", [0, 0, 0.236]), "tube", [0, 0, 0], [0.056, 0.05, 0.056], 0xffffff, "team");
+    part(fit("RightArm", "armband-right", [-0.176, 1.285, 0], "", [0, 0, -0.205]), "tube", [0, 0, 0], [0.056, 0.05, 0.056], 0xffffff, "team");
+    const badge = fit("Spine2", "faction-mark", [0, 1.37, 0.165]);
+    for (let stripe = 0; stripe < 4; stripe++) part(badge, "plate", [(stripe - 1.5) * 0.037, 0, 0], [0.019, 0.07, 0.012], 0xffffff, "team");
+    if (heavy) {
+      for (const side of [-1, 1]) part(fit(side > 0 ? "LeftArm" : "RightArm", "pauldron", [side * 0.18, 1.455, 0], "", [0, 0, -side * 0.3]), "plate", [0, 0, 0], [0.21, 0.07, 0.23], ARMOR);
+      const chest = fit("Spine2", "chest-plate", [0, 1.33, 0.17]);
+      part(chest, "plate", [0, 0, 0], [0.3, 0.24, 0.07], ARMOR);
+      part(chest, "plate", [0, -0.14, -0.005], [0.22, 0.05, 0.05], GRAPHITE);
+      badge.position.z += 0.045;
+    }
+    if (type === "worker") {
+      // Salvage cutter in the right hand: a boxy power tool with a toothed
+      // rotary drum that spins while the worker works; cargo tanks on the back.
+      const tool = fit("RightHand", "tool", [-0.262, 0.84, 0.08], "", [Math.PI / 2, 0, 0]);
+      part(tool, "plate", [0, 0.02, 0], [0.09, 0.2, 0.11], GRAPHITE);
+      part(tool, "plate", [0, 0.06, -0.065], [0.06, 0.1, 0.03], ARMOR);
+      part(tool, "tube", [0.055, 0, 0.02], [0.018, 0.14, 0.018], BRASS);
+      const cutter = joint(tool, "drill", [0, 0.15, 0], "drill");
+      part(cutter, "tube", [0, 0.035, 0], [0.065, 0.07, 0.065], ARMOR);
+      part(cutter, "tube", [0, 0.075, 0], [0.05, 0.02, 0.05], GRAPHITE);
+      part(cutter, "ring", [0, 0.07, 0], [0.04, 0.04, 0.05], TITANIUM, "metal", [Math.PI / 2, 0, 0]);
+      for (let tooth = 0; tooth < 8; tooth++) {
+        const angle = tooth * Math.PI / 4;
+        part(cutter, "plate", [Math.cos(angle) * 0.066, 0.035, Math.sin(angle) * 0.066], [0.016, 0.05, 0.02], BRASS, "metal", [0, -angle, 0]);
+      }
+      const pack = fit("Spine2", "cargo", [0, 1.32, -0.15]);
+      for (const side of [-1, 1]) {
+        part(pack, "tube", [side * 0.085, 0, 0], [0.045, 0.3, 0.045], ARMOR);
+        part(pack, "ring", [side * 0.085, 0.1, 0], [0.048, 0.048, 0.06], BRASS, "metal", [Math.PI / 2, 0, 0]);
+      }
+      rod(pack, [-0.085, -0.13, 0.02], [0.085, -0.13, 0.02], 0.014, GRAPHITE);
+    }
+    if (type === "striker") {
+      // Heavy plasma rifle in the right hand: energy cell on top, finned
+      // barrel shroud, glowing coils and emitter, stock and grips.
+      const gun = fit("RightHand", "weapon", [-0.262, 0.82, 0.10], "gun", [0.12, 0, 0]);
+      part(gun, "plate", [0, 0, 0], [0.11, 0.16, 0.46], GRAPHITE);
+      part(gun, "plate", [0, 0.04, 0.02], [0.12, 0.06, 0.34], ARMOR);
+      part(gun, "tube", [0, 0.1, -0.03], [0.035, 0.2, 0.035], BRASS, "metal", [Math.PI / 2, 0, 0]);
+      for (const side of [-1, 1]) part(gun, "plate", [side * 0.06, 0.01, 0.02], [0.006, 0.04, 0.28], 0xffffff, PLASMA);
+      rod(gun, [0, 0.02, 0.2], [0, 0.02, 0.62], 0.052, ARMOR);
+      rod(gun, [0, 0.02, 0.6], [0, 0.02, 0.72], 0.03, TITANIUM);
+      for (let fin = 0; fin < 4; fin++) {
+        const angle = fin * Math.PI / 4 + Math.PI / 8;
+        part(gun, "plate", [Math.cos(angle) * 0.066, 0.02 + Math.sin(angle) * 0.066, 0.42], [0.012, 0.05, 0.28], TITANIUM, "metal", [0, 0, angle - Math.PI / 2]);
+      }
+      for (let coil = 0; coil < 3; coil++) part(gun, "ring", [0, 0.02, 0.28 + coil * 0.11], [0.066, 0.066, 0.07], 0xffffff, PLASMA);
+      part(gun, "ring", [0, 0.02, 0.72], [0.055, 0.055, 0.12], 0xffffff, "team");
+      part(gun, "ball", [0, 0.02, 0.73], [0.032, 0.032, 0.04], 0xffffff, PLASMA);
+      part(gun, "plate", [0, -0.03, -0.3], [0.06, 0.1, 0.18], ARMOR);
+      part(gun, "plate", [0, -0.1, -0.03], [0.04, 0.12, 0.06], GRAPHITE, "metal", [0.25, 0, 0]);
+      part(gun, "plate", [0, -0.09, 0.2], [0.035, 0.08, 0.05], GRAPHITE);
+      joint(gun, "weapon-muzzle", [0, 0.02, 0.76]);
+    }
+    if (type === "launcher") {
+      // Rocket rack over the right shoulder, braced on the torso.
+      const rack = fit("Spine2", "rocket-rack", [-0.2, 1.57, -0.01], "gun");
+      part(rack, "plate", [0, 0, 0], [0.2, 0.17, 0.36], ARMOR);
+      for (let socket = 0; socket < 4; socket++) {
+        const horizontal = (socket % 2 - 0.5) * 0.085, vertical = (Math.floor(socket / 2) - 0.5) * 0.075;
+        part(rack, "tube", [horizontal, vertical, 0.19], [0.032, 0.05, 0.032], GRAPHITE, "metal", [Math.PI / 2, 0, 0]);
+        part(rack, "ring", [horizontal, vertical, 0.215], [0.034, 0.034, 0.07], TITANIUM);
+      }
+      part(rack, "plate", [-0.105, 0, -0.04], [0.008, 0.1, 0.22], 0xffffff, "team");
+      rod(rack, [0.02, -0.085, -0.03], [0.05, -0.16, -0.05], 0.018, GRAPHITE);
+      rod(rack, [0.1, -0.02, -0.1], [0.19, -0.2, -0.05], 0.014, GRAPHITE);
+      joint(rack, "weapon-muzzle", [-0.04, 0, 0.23]);
+    }
+    if (type === "anvil") {
+      // A tower shield strapped to the left forearm.
+      const shield = fit("LeftForeArm", "shield", [0.315, 1.0, 0.06], "", [0, 0.15, 0]);
+      part(shield, "plate", [0, 0, 0], [0.035, 0.46, 0.32], ARMOR);
+      part(shield, "plate", [-0.02, 0.15, 0], [0.012, 0.06, 0.28], 0xffffff, "team");
+      part(shield, "plate", [-0.02, -0.16, 0], [0.012, 0.03, 0.28], GRAPHITE);
+      rod(shield, [-0.03, 0.2, 0.1], [-0.03, -0.2, 0.1], 0.012, GRAPHITE);
+    }
+    if (type === "colossus") {
+      // Forearm cannon on the right arm and three power cells on the back.
+      const cannon = fit("RightForeArm", "weapon", [-0.245, 1.0, 0.1], "gun", [0.1, 0, 0]);
+      part(cannon, "plate", [0, 0, -0.04], [0.12, 0.12, 0.26], ARMOR);
+      rod(cannon, [0, 0, 0.05], [0, 0, 0.44], 0.045, GRAPHITE);
+      for (let collar = 0; collar < 3; collar++) part(cannon, "ring", [0, 0, 0.14 + collar * 0.1], [0.058, 0.058, 0.08], TITANIUM);
+      part(cannon, "ring", [0, 0, 0.44], [0.05, 0.05, 0.09], 0xffffff, "team");
+      part(cannon, "ball", [0, 0, 0.45], [0.03, 0.03, 0.04], 0xffffff, PLASMA);
+      joint(cannon, "weapon-muzzle", [0, 0, 0.47]);
+      const cells = fit("Spine2", "power-cells", [0, 1.3, -0.16]);
+      for (let cell = 0; cell < 3; cell++) part(cells, "tube", [(cell - 1) * 0.09, 0, 0], [0.04, 0.26 + (1 - Math.abs(cell - 1)) * 0.06, 0.04], BRASS);
+      rod(cells, [-0.09, -0.1, 0.02], [0.09, -0.1, 0.02], 0.014, GRAPHITE);
+    }
+    flush();
+    return fittings;
+  }
+
+  private createHumanoid(type: string, owner: number, height: number): UnitModel {
+    const source = this.rig!;
+    const rig = cloneSkeleton(source.scene);
+    const model = new THREE.Group(); model.add(rig);
+    model.name = `unit-${type}`; model.userData = { unitType: type, articulation: true, owner, gait: 0 };
+    rig.traverse(node => {
+      if (!(node instanceof THREE.Mesh)) return;
+      node.material = node.name === "Beta_Joints" ? this.joints : this.chrome;
+      node.castShadow = node.receiveShadow = true; node.frustumCulled = false;
+    });
+    const mixer = new THREE.AnimationMixer(rig);
+    const idleClip = source.animations.find(clip => clip.name.toLowerCase() === "idle")!;
+    const walkClip = source.animations.find(clip => clip.name.toLowerCase() === "walk")!;
+    const idle = mixer.clipAction(idleClip).play(), walk = mixer.clipAction(walkClip);
+    mixer.update(0); model.updateMatrixWorld(true);
+    const bones = new Map<Bone, THREE.Object3D>();
+    rig.traverse(node => { for (const bone of BONES) if (node.name.endsWith(bone)) bones.set(bone, node); });
+    if (!this.fittings.has(type)) this.fittings.set(type, this.buildFittings(type));
+    const nodes: { node: THREE.Object3D; position: THREE.Vector3; rotation: THREE.Euler }[] = [];
+    for (const { bone, group } of this.fittings.get(type)!) {
+      const copy = group.clone(); model.add(copy);
+      bones.get(bone)?.attach(copy);
+      copy.traverse(node => {
+        if (node instanceof THREE.Mesh && node.userData.surface === "team") node.material = this.teams[owner] ?? this.neutral;
+        if (node.userData.motion) nodes.push({ node, position: node.position.clone(), rotation: node.rotation.clone() });
+      });
+    }
+    const badge = rig.getObjectByName("faction-mark")!; badge.scale.x = 0.55 + (Number.isInteger(owner) && owner >= 0 ? owner % 4 : 0) * 0.15;
+    idle.time = Math.random() * idleClip.duration; mixer.update(0);
+    let time = this.serial++ * 2.399963, walking = false, activity = 0, drilling = 0, released = false;
+    const unit: UnitModel = {
+      model, weaponMuzzle: rig.getObjectByName("weapon-muzzle"),
+      update: (delta, speed, moving, attack, working) => {
+        if (released) return;
+        const step = THREE.MathUtils.clamp(finite(delta), 0, 0.1), recoil = THREE.MathUtils.clamp(finite(attack), 0, 1);
+        time += step;
+        if (walking !== moving) {
+          const previous = moving ? idle : walk, next = moving ? walk : idle;
+          next.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).play();
+          previous.crossFadeTo(next, 0.22, false);
+          walking = moving;
+        }
+        walk.setEffectiveTimeScale(THREE.MathUtils.clamp(Math.abs(finite(speed)) / 0.65, 0.3, 2.5));
+        mixer.update(step);
+        model.userData.gait = moving ? walk.getEffectiveWeight() : 0;
+        activity = THREE.MathUtils.damp(activity, working ? 1 : 0, 10, step);
+        drilling += step * 22 * activity;
+        rig.rotation.x = -recoil * 0.1 + (moving ? 0 : activity * (0.12 + Math.sin(time * 6) * 0.05));
+        for (const { node, position, rotation: rest } of nodes) {
+          node.position.copy(position); node.rotation.copy(rest);
+          switch (node.userData.motion) {
+            case "gun": node.translateZ(-recoil * 0.065); node.rotateX(-recoil * 0.075); break;
+            case "drill": node.rotation.y = drilling; break;
+          }
+        }
+      },
+      dispose: () => {
+        if (released) return;
+        released = true; mixer.stopAllAction(); mixer.uncacheRoot(rig);
+        rig.traverse(node => { if (node instanceof THREE.SkinnedMesh) node.skeleton.dispose(); });
+        model.removeFromParent(); model.clear(); rig.clear(); nodes.length = 0;
+        unit.weaponMuzzle = undefined; this.active.delete(unit);
+      },
+    };
+    model.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(rig, true);
+    rig.position.y -= bounds.min.y; model.scale.setScalar(height / (bounds.max.y - bounds.min.y));
+    this.active.add(unit); return unit;
   }
 
   create(type: string, owner: number, height: number): UnitModel {
     if (this.disposed) throw new Error("UnitModels has been disposed");
     if (!Object.hasOwn(DESIGNS, type)) throw new Error(`Unsupported mechanical unit: ${type}`);
     if (!Number.isFinite(height) || height <= 0) throw new RangeError("Unit height must be finite and positive");
+    if (HUMANOIDS.has(type) && this.rig) return this.createHumanoid(type, owner, height);
     if (!this.templates.has(type)) this.templates.set(type, this.build(type as keyof typeof DESIGNS));
     const rig = this.templates.get(type)!.clone(true), model = new THREE.Group(); model.add(rig);
-    model.name = `unit-${type}`; model.userData = { unitType: type, articulation: true, owner };
+    model.name = `unit-${type}`; model.userData = { unitType: type, articulation: true, owner, gait: 0 };
     const nodes: { node: THREE.Object3D; position: THREE.Vector3; rotation: THREE.Euler }[] = [];
     rig.traverse(node => {
       if (node instanceof THREE.Mesh && node.userData.surface === "team") node.material = this.teams[owner] ?? this.neutral;
@@ -320,6 +579,7 @@ export class UnitModels {
         const pace = THREE.MathUtils.clamp(Math.abs(finite(speed)) / height, 0, 3);
         time += step; phase += step * (2.5 + pace * 5);
         stride = THREE.MathUtils.damp(stride, moving ? Math.min(1, pace * 2) : 0, 12, step);
+        model.userData.gait = stride;
         activity = THREE.MathUtils.damp(activity, working ? 1 : 0, 10, step);
         if (moving) travel += step * finite(speed) / (model.scale.x * 0.29);
         drilling += step * 22 * activity;
@@ -334,7 +594,7 @@ export class UnitModels {
             case "shoulder": node.rotation.x = -0.18 - wave * 0.22 * stride - activity * (0.65 + Math.sin(time * 7) * 0.13); break;
             case "elbow": node.rotation.x = -0.48 - activity * 0.35 - recoil * 0.3; break;
             case "head": node.rotation.y += Math.sin(time * 0.65) * 0.16 * (1 - recoil); break;
-            case "gun": node.position.z -= recoil * 0.065; node.rotation.x -= recoil * 0.075; break;
+            case "gun": node.translateZ(-recoil * 0.065); node.rotateX(-recoil * 0.075); break;
             case "hover": node.position.y += Math.sin(time * 2.6 + offset) * 0.035; node.rotation.z += Math.sin(time * 1.8 + offset) * 0.045; break;
             case "wheel": node.rotation.x = travel; break;
             case "rotor": node.rotation.y = time * (30 + pace * 8) + offset; break;
@@ -370,8 +630,8 @@ export class UnitModels {
 
   dispose(): void {
     if (this.disposed) return;
-    this.disposed = true; this.active.forEach(unit => unit.dispose()); this.templates.clear();
+    this.disposed = true; this.active.forEach(unit => unit.dispose()); this.templates.clear(); this.fittings.clear();
     this.geometry.forEach(buffer => buffer.dispose()); this.geometry.clear();
-    [this.metal, this.eyes, this.neutral, ...this.teams].forEach(material => material.dispose());
+    [this.metal, this.eyes, this.neutral, this.chrome, this.joints, this.plasma, ...this.teams].forEach(material => material.dispose());
   }
 }

@@ -1,7 +1,7 @@
 # Cero One City — Build Plan & Design of Record (v1, as built)
 
 > English rewrite of the approved build plan, updated to match the implemented
-> system. The original Spanish concept brief is `Cero-One-City-concepto.docx`.
+> system. The concept document is [Cero-One-City-concept.md](Cero-One-City-concept.md).
 > Where the implementation deliberately deviates from the original plan, the
 > deviation is marked **[as-built]**.
 

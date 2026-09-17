@@ -52,7 +52,7 @@ test("3D preview renders, moves, respects fog, and releases its canvas", async (
     await new Promise(resolve => setTimeout(resolve, 400));
     const moved = renderer.actors.get(1).root.position.x > 3.5;
     const revealedEnemy = renderer.actors.get(2).root.visible;
-    const walking = Math.abs(renderer.actors.get(1).unitModel.model.getObjectByName("hip-0").rotation.x) > 0.001;
+    const walking = renderer.actors.get(1).unitModel.model.userData.gait > 0.001;
     state.turn = 2;
     renderer.render({ ...state, events_last_turn: [{ type: "attack", attacker: 1, target: 2,
       src: [4, 3], dst: [15, 15], ranged: true, attacker_type: "launcher" }] }, null);
@@ -100,8 +100,10 @@ test("3D preview renders, moves, respects fog, and releases its canvas", async (
     // square rule would still cover it.
     const hiddenMask = renderer.fog.sample(renderer.renderer, 15.5, 15.5) === 0
       && renderer.fog.sample(renderer.renderer, 6.5, 6.5) > 0.9;
-    const fullFog = renderer.actors.get(1).unitModel.model.getObjectByName("chassis").children
-      .some((part: { material?: { customProgramCacheKey: () => string } }) => part.material?.customProgramCacheKey().includes("integral-world-fog"));
+    let fullFog = false;
+    renderer.actors.get(1).unitModel.model.traverse((part: { material?: { customProgramCacheKey: () => string } }) => {
+      if (part.material?.customProgramCacheKey().includes("integral-world-fog")) fullFog = true;
+    });
     renderer.render({ ...state, turn: 0 }, null);
     const rewindSnaps = renderer.actors.get(1).duration === 0;
     renderer.destroy();

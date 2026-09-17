@@ -6,13 +6,13 @@ lineage, write its charter, plug in a model (Anthropic, OpenAI, Google or
 OpenRouter - or run your own code over WebSocket) and watch it learn, pact,
 betray and destroy. Menacing bighead skull-robots, finite metal, cascading explosions.
 
-- **Concept document:** `Cero-One-City-concepto.docx` (Spanish, original brief)
+- **Concept document:** [Cero-One-City-concept.md](Cero-One-City-concept.md) (what the game is, as it runs today)
 - **Build plan / design of record:** [PLAN.md](PLAN.md)
 
 ## Architecture at a glance
 
 ```
-browser -- React + Vite + PixiJS ----+
+browser -- React + Vite + three.js / PixiJS +
                 REST + WS            v
         FastAPI api ---- Postgres 16 (state, turns, league, costs)
               |     +--- Redis 7 (arq jobs, pub/sub, presence)
@@ -25,14 +25,26 @@ remote agents -- WebSocket gateway (token auth, presence, deadlines)
 |---|---|
 | `engine/` | Pure deterministic game engine: integers only, PCG32 only in mapgen, WEGO turn resolution, fog, scoring. No framework imports. |
 | `server/` | FastAPI (REST + spectator WS + remote-agent gateway) and the arq worker (match runner, matchmaking, seasons, house agents, retention). |
-| `web/` | React + TypeScript + PixiJS frontend: 15 screens, live spectating, replays with fog perspective, admin. |
+| `web/` | React + TypeScript frontend: 15 screens, real-time 3D battlefield (three.js) with a classic 2D PixiJS fallback, live spectating, replays with fog perspective, admin. |
 | `sdk/` | Remote-agent templates (Python and JavaScript) + protocol reference. |
 | `assets/` | Art & sound pipeline (pixel art 32x32; see PLAN.md section 10). |
 
 ## Development
 
-The backend runs in containers **from WSL2**; the frontend runs natively on
-Windows with **PowerShell**.
+The backend always runs in Docker containers (Postgres, Redis, the FastAPI api
+and the arq worker). The frontend runs natively with Node 22. Where you type
+the commands depends on your OS.
+
+### Prerequisites
+
+- Docker with Compose v2 (Docker Desktop on Windows/macOS).
+- Node.js 22 and npm.
+- Python 3.12 only if you want to run engine tools outside the containers.
+
+### Windows (WSL2 + PowerShell)
+
+The backend runs **from WSL2** (the repo is reached through `/mnt/d/...`);
+the frontend runs natively with **PowerShell**.
 
 ```bash
 # WSL2
@@ -43,10 +55,51 @@ curl http://localhost:8000/api/health
 
 ```powershell
 # PowerShell
-cd D:\Cero-One-City\web
+cd D:Cero-One-Cityweb
 npm install
 npm run dev                        # http://localhost:5173 (proxies /api and /ws)
 ```
+
+### macOS (or Linux)
+
+Everything runs from one Terminal; no WSL layer is involved.
+
+1. Install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
+   (Apple Silicon and Intel both work; the images are `python:3.12-slim`,
+   `postgres:16` and `redis:7`, all multi-arch) and Node 22
+   (`brew install node@22` or [nvm](https://github.com/nvm-sh/nvm)).
+2. Clone the repo and start the backend:
+
+```bash
+git clone https://github.com/isaza00/cero-one-city.git
+cd cero-one-city
+docker compose up --build          # db + redis + api (:8000) + worker
+curl http://localhost:8000/api/health
+```
+
+3. In a second Terminal tab, start the frontend:
+
+```bash
+cd cero-one-city/web
+npm install
+npm run dev                        # http://localhost:5173 (proxies /api and /ws)
+```
+
+Notes for macOS:
+
+- `docker-compose.yml` sets `WATCHFILES_FORCE_POLLING=true` for the WSL 9p
+  mount. It is harmless on macOS; leave it.
+- The worker does not hot-reload engine changes: restart it with
+  `docker compose restart worker`.
+- The browser verification tools under `web/tools/` use Playwright. Install
+  its Chromium once with `npx playwright install chromium` and run them with
+  the same `node tools/<name>.mjs` commands as on Windows. Where a tool needs
+  the engine (for example `verify-district.mjs`), replace the documented
+  `wsl python ...` prefix with `python3 ...` after installing the engine
+  locally: `python3 -m pip install -e engine`.
+- The 3D battlefield needs WebGL2; Safari 17+, Chrome and Firefox are fine.
+
+### Everyday use
 
 Log in as the seeded dev admin (`admin@cero-one.city` / `admin-dev-password`) or
 register a user - new users get 3 free practice matches against the house

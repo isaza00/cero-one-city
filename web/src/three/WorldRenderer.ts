@@ -204,6 +204,7 @@ export class WorldRenderer implements MapController {
     renderer.domElement.addEventListener("pointercancel", () => { pointer = null; }, { signal: this.abort.signal });
     await this.assets.load(renderer);
     if (this.dead) return;
+    this.unitModels.setRig(this.assets.rig("xbot"));
     this.scene.environment = this.assets.environmentMap;
     this.scene.environmentIntensity = 0.48;
     this.steel.normalMap = this.concrete.normalMap;
@@ -477,7 +478,7 @@ export class WorldRenderer implements MapController {
         concrete: this.concrete, steel: this.steel, dark: this.dark, glow: this.glow, rust: this.rust }, team);
     } else if (!["human", "survivor"].includes(entity.type)) {
       const height = ({ colossus: 2.35, walking_tower: 2.8, anvil: 1.55, spark: 0.65,
-        worker: 1.08, wasp: 0.55, watcher: 0.65, drone_swarm: 0.8, rider: 0.9, leech: 0.55,
+        worker: 1.18, wasp: 0.55, watcher: 0.65, drone_swarm: 0.8, rider: 0.9, leech: 0.55,
         prism: 1.05 } as Record<string, number>)[entity.type] ?? 1.35;
       unitModel = this.unitModels.create(entity.type, entity.owner, height);
       root.add(unitModel.model);

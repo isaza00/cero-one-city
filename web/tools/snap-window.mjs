@@ -1,6 +1,6 @@
 // Screenshot a page with a real desktop Chromium (Playwright, headed). Windows node:
 //   node tools/snap-window.mjs "http://localhost:5173/matches/<id>" "D:\\path\\out.png"
-const { chromium } = await import('file:///D:/Cero-One-City/web/node_modules/playwright/index.mjs');
+const { chromium } = await import('playwright');
 const browser = await chromium.launch({ headless: false, args: ['--window-size=1600,1000'] });
 const page = await (await browser.newContext({ viewport: { width: 1600, height: 950 } })).newPage();
 await page.goto(process.argv[2] ?? 'http://localhost:5173/', { waitUntil: 'networkidle' });

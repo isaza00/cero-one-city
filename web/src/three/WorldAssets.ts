@@ -35,8 +35,9 @@ export class WorldAssets {
     generator.dispose();
     const loader = new GLTFLoader();
     const textureLoader = new THREE.TextureLoader();
-    // The only rigged asset: the human. Every machine is procedural (UnitModels).
-    const jobs: Promise<void>[] = ["soldier"].map(async name => {
+    // Two rigged assets: the Soldier for humans and survivors, the Xbot for the
+    // humanoid machines (UnitModels dresses it). Everything else is procedural.
+    const jobs: Promise<void>[] = ["soldier", "xbot"].map(async name => {
       const model = await loader.loadAsync(`/world/${name}.glb`);
       this.models.set(name, model);
       model.scene.traverse(object => {
@@ -101,6 +102,9 @@ export class WorldAssets {
   }
 
   get environmentMap(): THREE.Texture | null { return this.environment?.texture ?? null; }
+
+  /** A loaded rig by file name ("soldier", "xbot"), for factories that dress it. */
+  rig(name: string): GLTF | undefined { return this.models.get(name); }
 
   /** A human from the rigged Soldier: the armed guard/recruit, or the unarmed
    *  survivor in weathered clothes with the visor gone. Machines never come

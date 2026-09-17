@@ -2,7 +2,7 @@
 // Run with the WINDOWS node (PowerShell / Git Bash, or node.exe from WSL) so the
 // browser shares localhost with the Vite dev server:
 //   node tools/open-window.mjs "http://localhost:5173/matches/<id>"
-const { chromium } = await import('file:///D:/Cero-One-City/web/node_modules/playwright/index.mjs');
+const { chromium } = await import('playwright');
 const browser = await chromium.launch({
   headless: false,
   args: ['--window-size=1600,1000', '--window-position=60,40'],

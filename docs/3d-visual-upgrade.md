@@ -6,8 +6,8 @@ Drag to pan, use the wheel to zoom, and right-drag to orbit. Click a unit or bui
 
 ## Included
 
-- One locally bundled rig, the Mixamo Soldier, for the armed human and the unarmed survivor: independent animation mixers, idle/walk crossfades, speed-adjusted walking, smooth turns and the weapon attachment that tells guard from survivor.
-- The fifteen-type cast of machines as original procedural, articulated models (`src/three/UnitModels.ts`): exposed endoskeletons, walkers, cycles, aircraft, drones, tripods and crawlers with faction plates, muzzles and per-joint motion. No chrome humanoid is scaled to stand in for a machine.
+- Two locally bundled rigs. The Mixamo Soldier for the armed human and the unarmed survivor: independent animation mixers, idle/walk crossfades, speed-adjusted walking, smooth turns and the weapon attachment that tells guard from survivor. The Mixamo Xbot for the five humanoid machines (worker, striker, launcher, anvil, colossus): the rig's dome head and pectorals sculpted away at load, a chrome shell over gunmetal joints, a procedural metal skull with red optics and bared teeth, faction armbands and chest stripes, and one fitting per type attached to the bones (drill and cargo tanks, rifle, shoulder rocket rack, forearm shield, forearm cannon plus power cells), all sharing the idle and walk clips of the rig.
+- The rest of the cast as original procedural, articulated models (`src/three/UnitModels.ts`): walkers, cycles, aircraft, drones, tripods and crawlers with faction plates, muzzles and per-joint motion.
 - HUD portraits rendered from those same models (`web/public/portraits/`, regenerated with `node tools/render-portraits.mjs`): unit, building and resource tiles, per faction, framed from one three-quarter view under the in-game light.
 - Scanned diffuse, normal and roughness maps for rubble, concrete and rocky terrain; a mostly flat suburb with a few low hills, a faint tile grid, and asphalt avenues with worn lane paint that disappear where the street was destroyed.
 - The district (`src/three/Features.ts`, `src/three/Props.ts`): the engine's `blocked` and `rubble` tiles are classified by shape and by their position on the street grid (shared with the engine through `src/three/roads.ts`) into houses with gable roofs, flat apartment blocks, the concrete skeletons of taller buildings cut in half (pillars, slabs, wall fragments, rebar), traffic jams of cars, vans and buses queued lane by lane (burnt, crushed, flipped, doors and tyres torn off), groves of living and dead trees, salvage pits with a derrick over each metal vein, and rubble fields with skeletons and bone piles near the houses and car parts near the streets. No loose stones anywhere. This is a war in progress: bomb craters dent the ground with scorched earth around them, three houses in five are burnt black, the cars are burnt, crushed and rusting, groves hold charred and flaming trees, the outlying blobs are burnt smallholdings (fenced charred crop rows, a shed, dead cattle), and one shared rule (`isBurning`) puts flames on a feature and smoke above it. The palette and lighting are deliberately dark. Everything is at human scale and every prop stands on an impassable tile, so units walk around it, never through it. Static props are merged per 16×16-tile chunk; when a tile changes (rubble cleared, a building razed) only that chunk is rebuilt.
@@ -30,13 +30,14 @@ node node_modules/typescript/bin/tsc -b
 node node_modules/@playwright/test/cli.js test e2e/world-renderer.spec.ts --reporter=line
 node tools/verify-live-world.mjs
 node tools/verify-apocalypse.mjs
+node tools/verify-humanoids.mjs
 wsl python engine/tools/dump_map.py 101 1v1 web/test-results/district-map.json   # from the repo root, with the engine installed
 node tools/verify-district.mjs
 node tools/render-portraits.mjs
 node tools/open-window.mjs "http://localhost:5173/matches/<id>"
 ```
 
-`verify-apocalypse.mjs` renders a fixed district with the whole cast against a mocked API (no match is created) and writes screenshots plus metrics under `web/test-results/apocalypse/`. `render-portraits.mjs` regenerates `web/public/portraits/` from the same renderer; run it after any change to the unit models, buildings or lighting.
+`verify-humanoids.mjs` renders close-ups of the five humanoid machines (both factions, idle and walking) under `web/test-results/humanoids/`. `verify-apocalypse.mjs` renders a fixed district with the whole cast against a mocked API (no match is created) and writes screenshots plus metrics under `web/test-results/apocalypse/`. `render-portraits.mjs` regenerates `web/public/portraits/` from the same renderer; run it after any change to the unit models, buildings or lighting.
 
 Tests check geometry, rig normalization, movement, fog, attacks, selection, rewind, cleanup, the default renderer, and repeated 2D/3D switching. Live matches start near a base, while replays initially fit the world.
 

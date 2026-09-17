@@ -13,9 +13,10 @@ async function download(name, url, source, license) {
     sha256: createHash('sha256').update(bytes).digest('hex') });
   console.log(name, bytes.length);
 }
-// The Soldier is the only rigged asset (humans and survivors); every machine
-// is procedural (src/three/UnitModels.ts), so no Xbot is downloaded any more.
-for (const name of ['Soldier']) {
+// Two rigged assets: the Soldier (humans and survivors) and the Xbot (the
+// chrome endoskeleton the humanoid machines are built on). The other machines
+// are procedural (src/three/UnitModels.ts).
+for (const name of ['Soldier', 'Xbot']) {
   await download(`${name.toLowerCase()}.glb`,
     `https://raw.githubusercontent.com/mrdoob/three.js/r185/examples/models/gltf/${name}.glb`,
     'Adobe Mixamo, distributed in the Three.js examples',
